@@ -1,0 +1,20 @@
+{
+    "name": "elegance-ig-bot",
+    "version": "1.0.0",
+    "description": "Bot de Instagram (DMs + comentarios) para Dr. Sergio Quintero / Elegance Medical, con respuestas generadas por Claude (Anthropic).",
+    "main": "src/server.js",
+    "type": "commonjs",
+    "scripts": {
+          "start": "node src/server.js",
+          "dev": "node --watch src/server.js"
+    },
+    "engines": {
+          "node": ">=18.0.0"
+    },
+    "dependencies": {
+          "@anthropic-ai/sdk": "^0.32.1",
+          "axios": "^1.7.7",
+          "dotenv": "^16.4.5",
+          "express": "^4.21.1"
+    }
+}
