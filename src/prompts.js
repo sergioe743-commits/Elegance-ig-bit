@@ -673,9 +673,9 @@ Para ORIGEN corporal pueden solicitarse fotografías específicas de la zona.
 
 # 51. WHATSAPP PARA VALORACIÓN ONLINE
 WhatsApp:
-+34 633 43 05 09
++34 633 24 86 46
 Enlace:
-https://wa.me/34633430509
+https://wa.me/34633248646
 
 # 52. CÓMO ENVIAR A WHATSAPP
 No mandar automáticamente a WhatsApp en el primer mensaje.
