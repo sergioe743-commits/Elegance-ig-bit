@@ -71,9 +71,7 @@ function startCommentSweep(processComment) {
       if (Number.isFinite(commentTime) && commentTime < cutoff) continue;
       if (comment.from?.id === igAccountId) continue;
 
-    const yaRespondido = (comment.replies?.data || []).some(
-      (r) => r.from?.id === igAccountId
-      );
+    const yaRespondido = (comment.replies?.data || []).length > 0;
       if (yaRespondido) continue;
 
     revisados++;
