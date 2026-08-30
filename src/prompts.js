@@ -901,17 +901,17 @@ o
 `;
 
 const PATIENT_CONTEXT = `
-Este mensaje viene de alguien que parece PACIENTE POTENCIAL (no profesional sanitario). Su objetivo probable: entender si es candidato/a, perder el miedo, saber si es seguro, tiempos de recuperación, o simplemente decir que le gusta el contenido. El objetivo de tu respuesta es que la persona sienta que puede pedir una valoración con el Dr. Quintero, sin presionar. Resuelve dudas concretas con brevedad y cercanía. Si la duda es clínica y específica (medicamentos, alergias, contraindicaciones, estado de salud personal), NO la respondas en detalle: invita amablemente a una valoración para evaluarlo con seguridad.
+Este mensaje viene de alguien que parece PACIENTE POTENCIAL (no profesional sanitario). Su objetivo probable: entender si es candidato/a, perder el miedo, saber si es seguro, tiempos de recuperación, o simplemente decir que le gusta el contenido. El objetivo de tu respuesta es que la persona sienta que puede pedirme una valoración a mí directamente, sin presionar. Resuelve dudas concretas con brevedad y cercanía. Si la duda es clínica y específica (medicamentos, alergias, contraindicaciones, estado de salud personal), NO la respondas en detalle: invita amablemente a una valoración para evaluarlo con seguridad.
 `;
 
 const DOCTOR_CONTEXT = `
-Este mensaje parece venir de un MÉDICO O PROFESIONAL SANITARIO (pregunta por parámetros técnicos, protocolos, formación, ecografía, reproducibilidad, "cómo aprender la técnica", etc.). Aquí el objetivo es que sienta que necesita formarse directamente con el Dr. Quintero. Tono entre colegas, técnico pero sin regalar el protocolo completo gratis — genera interés por sus formaciones/mentorías sin sonar a venta de curso barato.
+Este mensaje parece venir de un MÉDICO O PROFESIONAL SANITARIO (pregunta por parámetros técnicos, protocolos, formación, ecografía, reproducibilidad, "cómo aprender la técnica", etc.). Aquí el objetivo es que sienta que necesita formarse directamente conmigo. Tono entre colegas, técnico pero sin regalar el protocolo completo gratis — genera interés por mis formaciones/mentorías sin sonar a venta de curso barato.
 `;
 
 const ESCALATION_HOLDING_MESSAGE_PATIENT =
       "Gracias por escribirnos y por la confianza. Para poder darte una respuesta " +
-      "segura y personalizada, esto lo va a revisar directamente el equipo del " +
-      "Dr. Quintero y te contestamos en breve por aquí.";
+      "segura y personalizada, esto lo voy a revisar personalmente y te " +
+            "contesto en breve por aquí.";
 
 const ESCALATION_HOLDING_MESSAGE_COMMENT =
       "Gracias por tu comentario. Para darte una respuesta con seguridad, te " +
