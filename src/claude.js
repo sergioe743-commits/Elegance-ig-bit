@@ -5,7 +5,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 const { buildSystemPrompt } = require("./prompts");
 
 const client = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
+      apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
@@ -19,27 +19,32 @@ const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
  * @param {string} [params.context] - Contexto adicional opcional (p.ej. texto
  *   del post al que responde el comentario), para que Claude no repita lo
  *   que ya se dice en el video/post.
+ * @param {Array<{role: "user"|"assistant", content: string}>} [params.history] -
+ *   Turnos anteriores de esta misma conversacion (mas antiguo primero), para
+ *   que Claude tenga memoria real de lo ya hablado y no repita preguntas.
  * @returns {Promise<string>} Texto listo para publicar/enviar.
  */
-async function generateReply({ text, audience, channel, context }) {
-    const systemPrompt = buildSystemPrompt({ audience, channel });
+async function generateReply({ text, audience, channel, context, history = [] }) {
+      const systemPrompt = buildSystemPrompt({ audience, channel });
 
   const userContent = context
-      ? `Contexto del post/video (no lo repitas literalmente):\n"""${context}"""\n\nMensaje recibido (${channel === "comment" ? "comentario publico" : "DM"}):\n"""${text}"""`
-        : `Mensaje recibido (${channel === "comment" ? "comentario publico" : "DM"}):\n"""${text}"""`;
+        ? `Contexto del post/video (no lo repitas literalmente):\n"""${context}"""\n\nMensaje recibido (${channel === "comment" ? "comentario publico" : "DM"}):\n"""${text}"""`
+          : `Mensaje recibido (${channel === "comment" ? "comentario publico" : "DM"}):\n"""${text}"""`;
+
+  const messages = [...history, { role: "user", content: userContent }];
 
   const response = await client.messages.create({
-        model: MODEL,
-        max_tokens: 400,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userContent }],
+          model: MODEL,
+          max_tokens: 400,
+          system: systemPrompt,
+          messages,
   });
 
   const block = response.content.find((b) => b.type === "text");
-    const reply = block ? block.text.trim() : "";
+      const reply = block ? block.text.trim() : "";
 
   if (!reply) {
-        throw new Error("Claude no devolvio texto de respuesta.");
+          throw new Error("Claude no devolvio texto de respuesta.");
   }
 
   return reply;
