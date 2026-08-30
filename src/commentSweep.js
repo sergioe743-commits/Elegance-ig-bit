@@ -5,7 +5,7 @@
 // funciona, algunos comentarios reales se quedaban sin respuesta y sin
 // ningun rastro en los logs -- este barrido los detecta y los responde.
 //
-// Cada cierto tiempo (por defecto cada 10 minutos):
+// Cada cierto tiempo (por defecto cada 5 minutos):
 //  1. Lista las publicaciones mas recientes de la cuenta.
 //  2. Para cada una, lista sus comentarios recientes (con sus respuestas).
 //  3. Cualquier comentario de otra persona, dentro de la ventana de tiempo,
@@ -21,7 +21,7 @@
 
 const { getRecentMedia, getMediaComments } = require("./instagram");
 const SWEEP_INTERVAL_MS =
-  (Number(process.env.COMMENT_SWEEP_MINUTES) || 10) * 60 * 1000;
+  (Number(process.env.COMMENT_SWEEP_MINUTES) || 5) * 60 * 1000;
 const LOOKBACK_MS =
   (Number(process.env.COMMENT_SWEEP_LOOKBACK_MINUTES) || 30) * 60 * 1000;
 const MEDIA_LIMIT = Number(process.env.COMMENT_SWEEP_MEDIA_LIMIT) || 10;
