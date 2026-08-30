@@ -66,12 +66,27 @@ function startCommentSweep(processComment) {
         );
       continue;
     }
+    // Instagram aplana las respuestas dentro de un mismo hilo: si alguien
+    // responde a una respuesta nuestra, ese mensaje puede aparecer como un
+    // comentario mas en esta misma lista (no anidado bajo el comentario al
+    // que realmente respondio). Por eso, para saber si YA se respondio a un
+    // comentario, no basta con mirar sus propias `replies` -- hay que mirar
+    // las respuestas del hilo completo al que pertenece.
+    const hiloDe = new Map();
+    for (const c of comments) {
+      for (const r of c.replies?.data || []) {
+        hiloDe.set(r.id, c);
+      }
+    }
     for (const comment of comments) {
       const commentTime = new Date(comment.timestamp).getTime();
       if (Number.isFinite(commentTime) && commentTime < cutoff) continue;
       if (comment.from?.id === igAccountId) continue;
 
-    const yaRespondido = (comment.replies?.data || []).length > 0;
+    const hilo = hiloDe.get(comment.id) || comment;
+      const yaRespondido = (hilo.replies?.data || []).some(
+        (r) => r.from?.id === igAccountId && new Date(r.timestamp).getTime() >= commentTime
+          );
       if (yaRespondido) continue;
 
     revisados++;
