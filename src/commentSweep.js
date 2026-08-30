@@ -84,10 +84,8 @@ function startCommentSweep(processComment) {
       if (comment.from?.id === igAccountId) continue;
 
     const hilo = hiloDe.get(comment.id) || comment;
-      const yaRespondido = (hilo.replies?.data || []).some(
-        (r) => r.from?.id === igAccountId && new Date(r.timestamp).getTime() >= commentTime
-          );
-      if (yaRespondido) continue;
+            const yaRespondido = (hilo.replies?.data || []).length > 0;
+            if (yaRespondido) continue;
 
     revisados++;
       try {
