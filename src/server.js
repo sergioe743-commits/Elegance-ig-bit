@@ -13,10 +13,12 @@ const {
 sendDirectMessage,
 replyToComment,
 getMediaCaption,
+getUserProfile,
 } = require("./instagram");
 const { alreadyProcessed, markProcessed, getHistory, appendTurn } = require("./store");
 const { startCommentSweep } = require("./commentSweep");
 const { startDmSweep } = require("./dmSweep");
+const { EXCLUDED_USERNAMES } = require("./excludedAccounts");
 const {
 ESCALATION_HOLDING_MESSAGE_PATIENT,
 ESCALATION_HOLDING_MESSAGE_COMMENT,
@@ -33,6 +35,10 @@ req.rawBody = buf;
 })
 );
 
+const EXCLUDED_USERNAMES_SET = new Set(
+EXCLUDED_USERNAMES.map((u) => u.toLowerCase())
+);
+
 const captionCache = new Map();
 async function getCachedMediaCaption(mediaId) {
 if (!mediaId) return undefined;
@@ -45,6 +51,24 @@ return caption;
 console.error("[comment] No se pudo obtener el caption de la publicacion:", describeError(err));
 return undefined;
 }
+}
+
+// Cache de IGSID -> username, para no llamar a la API de Instagram en cada
+// mensaje de la misma conversacion solo para saber si hay que excluirla.
+const usernameCache = new Map();
+async function getCachedUsername(senderId) {
+if (!senderId) return null;
+if (usernameCache.has(senderId)) return usernameCache.get(senderId);
+const profile = await getUserProfile(senderId);
+const username = profile?.username || null;
+usernameCache.set(senderId, username);
+return username;
+}
+
+async function isExcludedSender(senderId) {
+const username = await getCachedUsername(senderId);
+if (!username) return false;
+return EXCLUDED_USERNAMES_SET.has(username.toLowerCase());
 }
 
 app.get("/webhook", (req, res) => {
@@ -106,6 +130,11 @@ console.error("[comment] Error:", describeError(err))
 
 async function processMessage({ senderId, text, messageId }) {
 if (!senderId || !text) return false;
+if (await isExcludedSender(senderId)) {
+const username = usernameCache.get(senderId);
+console.log(`[dm] Ignorado (cuenta excluida: @${username}, sender=${senderId}).`);
+return false;
+}
 if (messageId && alreadyProcessed(messageId)) return false;
 if (messageId) markProcessed(messageId);
 const conversationKey = `dm:${senderId}`;
@@ -135,9 +164,17 @@ const messageId = event.message?.mid || `${senderId}-${event.timestamp}`;
 await processMessage({ senderId, text, messageId });
 }
 
-async function processComment({ commentId, text, fromId, mediaId }) {
+async function processComment({ commentId, text, fromId, fromUsername, mediaId }) {
 if (!commentId || !text) return false;
 if (fromId && process.env.IG_ACCOUNT_ID && fromId === process.env.IG_ACCOUNT_ID) {
+return false;
+}
+// El webhook de comentarios normalmente ya trae el username en from.username
+// (a diferencia de los DMs, donde solo llega el id). Si por lo que sea no
+// viene, se intenta resolver por API como red de seguridad.
+const username = fromUsername || (fromId ? await getCachedUsername(fromId) : null);
+if (username && EXCLUDED_USERNAMES_SET.has(username.toLowerCase())) {
+console.log(`[comment] Ignorado (cuenta excluida: @${username}, comment=${commentId}).`);
 return false;
 }
 if (alreadyProcessed(commentId)) return false;
@@ -170,9 +207,10 @@ async function handleCommentEvent(value) {
 const commentId = value.id;
 const text = value.text;
 const fromId = value.from?.id;
+const fromUsername = value.from?.username;
 const mediaId = value.media?.id;
 if (!commentId || !text) return;
-await processComment({ commentId, text, fromId, mediaId });
+await processComment({ commentId, text, fromId, fromUsername, mediaId });
 }
 
 async function notifyEscalation(details) {
