@@ -16,6 +16,7 @@ const {
 } = require("./instagram");
 const { getHistory, appendTurn } = require("./memory");
 const { startCommentSweep } = require("./commentSweep");
+const { startDmSweep } = require("./dmSweep");
 const {
       ESCALATION_HOLDING_MESSAGE_PATIENT,
       ESCALATION_HOLDING_MESSAGE_COMMENT,
@@ -114,22 +115,17 @@ async function handleWebhookEvent(body) {
                                                                      }
 }
 
-async function handleMessagingEvent(event) {
-      if (event.message?.is_echo) return;
-      const text = event.message?.text;
-      if (!text) return;
-      const eventId = event.message?.mid || `${event.sender?.id}-${event.timestamp}`;
-      if (alreadyProcessed(eventId)) return;
-      markProcessed(eventId);
-      const senderId = event.sender?.id;
-      if (!senderId) return;
+async function processMessage({ senderId, text, messageId }) {
+      if (!senderId || !text) return false;
+      if (messageId && alreadyProcessed(messageId)) return false;
+      if (messageId) markProcessed(messageId);
       const conversationKey = `dm:${senderId}`;
       if (needsHumanReview(text)) {
             console.log(`[dm] Escalado a revision humana (sender=${senderId}).`);
             await sendDirectMessage(senderId, ESCALATION_HOLDING_MESSAGE_PATIENT);
             appendTurn(conversationKey, text, ESCALATION_HOLDING_MESSAGE_PATIENT);
             notifyEscalation({ channel: "dm", senderId, text });
-            return;
+            return true;
       }
       const audience = detectAudience(text);
       const history = getHistory(conversationKey);
@@ -137,6 +133,17 @@ async function handleMessagingEvent(event) {
       await sendDirectMessage(senderId, reply);
       appendTurn(conversationKey, text, reply);
       console.log(`[dm] Respondido (audience=${audience}, sender=${senderId}).`);
+      return true;
+}
+
+async function handleMessagingEvent(event) {
+      if (event.message?.is_echo) return;
+      const text = event.message?.text;
+      if (!text) return;
+      const senderId = event.sender?.id;
+      if (!senderId) return;
+      const messageId = event.message?.mid || `${senderId}-${event.timestamp}`;
+      await processMessage({ senderId, text, messageId });
 }
 
 async function processComment({ commentId, text, fromId, mediaId }) {
@@ -209,3 +216,4 @@ app.listen(PORT, () => {
 });
 
 startCommentSweep(processComment);
+startDmSweep(processMessage);
