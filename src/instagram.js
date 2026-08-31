@@ -101,10 +101,69 @@ async function getMediaComments(mediaId, limit = 50) {
     });
     return data.data || [];
 }
+/**
+ * Lista las conversaciones recientes del inbox de Instagram, incluyendo las
+ * que estan en "Solicitudes de mensajes" (Message Requests) activas dentro
+ * de los ultimos 30 dias -- segun la documentacion de Meta para este
+ * endpoint. Se usa para el barrido periodico de DMs, red de seguridad para
+ * los mensajes que caen en Solicitudes y por eso nunca disparan el webhook
+ * de "messaging".
+ * @param {number} limit
+ * @returns {Promise<Array<{id: string, updated_time?: string, participants?: object}>>}
+ */
+async function getRecentConversations(limit = 30) {
+    const igAccountId = process.env.IG_ACCOUNT_ID;
+    if (!igAccountId) throw new Error("Falta IG_ACCOUNT_ID en el entorno.");
+
+    // La doc de Meta solo documenta id + updated_time como respuesta de este
+    // endpoint (GET /{ig-id}/conversations?platform=instagram); no confirma
+    // "participants" como campo valido aqui, y pedir un campo invalido puede
+    // devolver un error 400 para toda la llamada. Por eso no lo pedimos --
+    // el remitente de cada conversacion se obtiene igualmente del campo
+    // "from" del ultimo mensaje en getLastMessage().
+    const url = `${GRAPH_BASE}/${igAccountId}/conversations`;
+    const { data } = await axios.get(url, {
+        params: {
+            platform: "instagram",
+            fields: "id,updated_time",
+            limit,
+            access_token: getAccessToken(),
+        },
+    });
+    return data.data || [];
+}
+/**
+ * Obtiene el ultimo mensaje de una conversacion (para saber si quedo sin
+ * responder y quien lo escribio), para el barrido periodico de DMs.
+ * Usa el patron documentado por Meta: pedir el campo "messages" (con
+ * modificador .limit()) sobre el propio nodo de la conversacion, en vez del
+ * edge /{conversation-id}/messages.
+ * @param {string} conversationId
+ * @returns {Promise<{id: string, text?: string, created_time?: string, from?: {id: string, username?: string}} | null>}
+ */
+async function getLastMessage(conversationId) {
+    const url = `${GRAPH_BASE}/${conversationId}`;
+    const { data } = await axios.get(url, {
+        params: {
+            fields: "messages.limit(1){id,message,created_time,from}",
+            access_token: getAccessToken(),
+        },
+    });
+    const last = data.messages?.data?.[0];
+    if (!last) return null;
+    return {
+        id: last.id,
+        text: last.message,
+        created_time: last.created_time,
+        from: last.from,
+    };
+}
 module.exports = {
     sendDirectMessage,
     replyToComment,
     getMediaCaption,
     getRecentMedia,
     getMediaComments,
+    getRecentConversations,
+    getLastMessage,
 };
