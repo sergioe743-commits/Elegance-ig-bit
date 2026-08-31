@@ -35,7 +35,7 @@ function describeError(err) {
 }
 /**
  * Arranca el barrido periodico.
- * @param {(args: {commentId: string, text: string, fromId?: string, mediaId?: string}) => Promise<void>} processComment
+ * @param {(args: {commentId: string, text: string, fromId?: string, fromUsername?: string, mediaId?: string}) => Promise<void>} processComment
  *   La misma funcion que usa el webhook para procesar un comentario (escalado,
  *   memoria, Claude, publicar respuesta). Se reutiliza para no duplicar logica.
  */
@@ -93,6 +93,7 @@ function startCommentSweep(processComment) {
           commentId: comment.id,
           text: comment.text,
           fromId: comment.from?.id,
+          fromUsername: comment.from?.username,
           mediaId: item.id,
       });
         if (respondio) respondidos++;
