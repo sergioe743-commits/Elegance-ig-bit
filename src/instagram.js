@@ -173,6 +173,30 @@ created_time: last.created_time,
 from: last.from,
 };
 }
+/**
+* Resuelve el username de Instagram de quien nos escribio un DM, a partir de
+* su IGSID (el id que llega en el evento de webhook "messaging", que NO
+* incluye username -- solo id). Se usa para la lista de exclusion de cuentas
+* que Sergio sigue personalmente, para que el bot no les conteste.
+* Si Meta no puede resolverlo (permiso no concedido, IGSID invalido, etc.)
+* devuelve null en vez de lanzar, para que el llamador pueda seguir
+* funcionando con normalidad (fail-open: si no se puede saber quien es, se
+* responde igual, no se bloquea al remitente).
+* @param {string} igsid
+* @returns {Promise<{username?: string, name?: string} | null>}
+*/
+async function getUserProfile(igsid) {
+if (!igsid) return null;
+try {
+const url = `${GRAPH_BASE}/${igsid}`;
+const { data } = await axios.get(url, {
+params: { fields: "username,name", access_token: getAccessToken() },
+});
+return { username: data.username, name: data.name };
+} catch (err) {
+return null;
+}
+}
 module.exports = {
 sendDirectMessage,
 replyToComment,
@@ -181,4 +205,5 @@ getRecentMedia,
 getMediaComments,
 getRecentConversations,
 getLastMessage,
+getUserProfile,
 };
