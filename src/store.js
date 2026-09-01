@@ -69,6 +69,12 @@ state.processed[id] = Date.now();
 scheduleSave();
 }
 
+  function unmarkProcessed(id) {
+      if (!id) return;
+      delete state.processed[id];
+      scheduleSave();
+  }
+
 function getHistory(key) {
 const entry = state.conversations[key];
 if (!entry) return [];
@@ -112,4 +118,4 @@ changed = true;
 if (changed) scheduleSave();
 }, 60 * 60 * 1000).unref();
 
-module.exports = { alreadyProcessed, markProcessed, getHistory, appendTurn };
+module.exports = { alreadyProcessed, unmarkProcessed, markProcessed, getHistory, appendTurn };
