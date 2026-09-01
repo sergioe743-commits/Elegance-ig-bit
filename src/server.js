@@ -15,7 +15,7 @@ replyToComment,
 getMediaCaption,
 getUserProfile,
 } = require("./instagram");
-const { alreadyProcessed, markProcessed, getHistory, appendTurn } = require("./store");
+const { unmarkProcessed, alreadyProcessed, markProcessed, getHistory, appendTurn } = require("./store");
 const { startCommentSweep } = require("./commentSweep");
 const { startDmSweep } = require("./dmSweep");
 const { EXCLUDED_USERNAMES } = require("./excludedAccounts");
@@ -146,12 +146,17 @@ notifyEscalation({ channel: "dm", senderId, text });
 return true;
 }
 const audience = detectAudience(text);
-const history = getHistory(conversationKey);
-const reply = await generateReply({ text, audience, channel: "dm", history });
-await sendDirectMessage(senderId, reply);
-appendTurn(conversationKey, text, reply);
-console.log(`[dm] Respondido (audience=${audience}, sender=${senderId}).`);
-return true;
+    const history = getHistory(conversationKey);
+    try {
+          const reply = await generateReply({ text, audience, channel: "dm", history });
+          await sendDirectMessage(senderId, reply);
+          appendTurn(conversationKey, text, reply);
+          console.log(`[dm] Respondido (audience=${audience}, sender=${senderId}).`);
+          return true;
+    } catch (err) {
+          if (messageId) unmarkProcessed(messageId);
+          throw err;
+    }
 }
 
 async function handleMessagingEvent(event) {
@@ -188,19 +193,24 @@ notifyEscalation({ channel: "comment", commentId, text });
 return true;
 }
 const audience = detectAudience(text);
-const history = getHistory(conversationKey);
-const context = await getCachedMediaCaption(mediaId);
-const reply = await generateReply({
-text,
-audience,
-channel: "comment",
-history,
-context,
-});
-await replyToComment(commentId, reply);
-appendTurn(conversationKey, text, reply);
-console.log(`[comment] Respondido (audience=${audience}, comment=${commentId}).`);
-return true;
+  const history = getHistory(conversationKey);
+  const context = await getCachedMediaCaption(mediaId);
+  try {
+    const reply = await generateReply({
+      text,
+      audience,
+      channel: "comment",
+      history,
+      context,
+    });
+    await replyToComment(commentId, reply);
+    appendTurn(conversationKey, text, reply);
+    console.log(`[comment] Respondido (audience=${audience}, comment=${commentId}).`);
+    return true;
+  } catch (err) {
+    unmarkProcessed(commentId);
+    throw err;
+  }
 }
 
 async function handleCommentEvent(value) {
