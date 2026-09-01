@@ -17,7 +17,7 @@ const anthropicClient = new Anthropic({
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.2-chat-latest";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.6-sol";
 
 const openaiClient = axios.create({
           baseURL: "https://api.openai.com/v1",
