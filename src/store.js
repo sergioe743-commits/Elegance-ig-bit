@@ -17,7 +17,7 @@ const path = require("path");
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "..", "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 
-const PROCESSED_TTL_MS = 2 * 60 * 1000; // TEMPORAL: bajado de 24h a 2min para liberar el backlog atascado por el fallo de IA de hoy; volver a 24h despues.
+const PROCESSED_TTL_MS = 24 * 60 * 60 * 1000; // 24h -- cubre de sobra la ventana de mensajeria de Meta (24h)
 const CONVERSATION_TTL_MS =
 (Number(process.env.CONVERSATION_TTL_HOURS) || 12) * 60 * 60 * 1000;
 const MAX_TURNS = 10; // 10 intercambios (20 mensajes) como maximo por conversacion
