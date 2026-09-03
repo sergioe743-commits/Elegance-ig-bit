@@ -2,8 +2,10 @@
 
 Bot de Instagram (DMs + comentarios) para el Dr. Sergio Quintero / Elegance
 Medical S.L. Responde automaticamente en la voz de marca de la clinica,
-usando Claude (Anthropic) para redactar cada respuesta, y escala a revision
-humana cualquier mensaje sensible (urgencias, salud, autolesion, menores,
+usando Claude (Anthropic) como motor principal para redactar cada
+respuesta, con GPT (OpenAI) como respaldo automatico si Claude falla por
+cualquier motivo (cuenta, saldo, red, etc.), y escala a revision humana
+cualquier mensaje sensible (urgencias, salud, autolesion, menores,
 reclamaciones) en lugar de auto-responderlo.
 
 ## Como funciona
@@ -21,7 +23,10 @@ lo revise a mano.
 
 Paso 4: Si no hay alerta, se detecta si quien escribe parece paciente o
 medico (misma heuristica) y se genera la respuesta con Claude, usando el
-system prompt de marca (src/prompts.js).
+system prompt de marca (src/prompts.js). Si Claude falla, se reintenta
+automaticamente con GPT usando el mismo system prompt, para que el bot
+siga respondiendo aunque uno de los dos proveedores tenga un problema
+puntual.
 
 Paso 5: La respuesta se envia por la Graph API de Instagram
 (src/instagram.js): DM de vuelta si era un mensaje directo, o respuesta
@@ -36,10 +41,11 @@ seguridad decide escalar.
 La carpeta elegance-ig-bot contiene: package.json, .env.example (plantilla
 de variables de entorno, copiar a .env), README.md, y la carpeta src con
 server.js (servidor Express: webhook GET/POST, verificacion de firma),
-prompts.js (voz de marca / system prompt para Claude), safety.js
-(heuristica de escalado + deteccion paciente/medico), claude.js (llamada a
-la API de Anthropic), e instagram.js (llamadas a la Graph API de
-Instagram).
+prompts.js (voz de marca / system prompt), safety.js
+(heuristica de escalado + deteccion paciente/medico), claude.js (cliente
+combinado: llama primero a la API de Anthropic/Claude y, si falla, a la de
+OpenAI/GPT como respaldo automatico), e instagram.js (llamadas a la Graph
+API de Instagram).
 
 ## Configurar variables de entorno
 
@@ -61,7 +67,11 @@ META_APP_SECRET esta en App settings, Basic, boton "Show" junto a App
 Secret, en el dashboard de la app.
 
 ANTHROPIC_API_KEY es tu clave de la API de Anthropic
-(console.anthropic.com, API Keys).
+(console.anthropic.com, API Keys). Es el motor principal de respuestas.
+
+OPENAI_API_KEY es tu clave de la API de OpenAI (platform.openai.com, API
+Keys). Se usa automaticamente como respaldo si Claude falla. OPENAI_MODEL
+es opcional (por defecto gpt-5.6-sol).
 
 ESCALATION_WEBHOOK_URL es opcional: si quieres que el equipo reciba un
 aviso (por ejemplo en un canal de Slack via "Incoming Webhook") cada vez
@@ -103,6 +113,9 @@ con senales de alerta (urgencias, embarazo, medicacion, alergias, salud
 mental, menores, reclamaciones legales) se escalan siempre a revision
 humana, nunca reciben respuesta medica automatica.
 
+Puedes ajustar que palabras disparan el escalado editando
+RED_FLAG_PATTERNS en src/safety.js, y ajustar el tono/reglas de marca
+editando BRAND_CORE en src/prompts.js.
 Puedes ajustar que palabras disparan el escalado editando
 RED_FLAG_PATTERNS en src/safety.js, y ajustar el tono/reglas de marca
 editando BRAND_CORE en src/prompts.js.
