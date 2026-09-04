@@ -25,7 +25,7 @@ async function generateWithGPT(systemPrompt, messages) {
             try {
                           response = await openaiClient.post("/chat/completions", {
                                           model: OPENAI_MODEL,
-                                          max_tokens: 400,
+                                          max_completion_tokens: 400,
                                           messages: [{ role: "system", content: systemPrompt }, ...messages],
                           });
             } catch (err) {
