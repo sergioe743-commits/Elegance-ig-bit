@@ -159,10 +159,32 @@ const audience = detectAudience(text);
     }
 }
 
+// Detecta si un evento de mensajeria trae fotos/video adjuntos (sin texto o
+// junto con texto) y devuelve una nota sintetica en español para dar
+// contexto al modelo. Sin esto, un DM que solo trae adjuntos (Meta no manda
+// "text" en ese caso) se ignoraba en silencio y la persona se quedaba sin
+// ninguna respuesta.
+function describeAttachments(event) {
+const attachments = event.message?.attachments;
+if (!Array.isArray(attachments) || attachments.length === 0) return null;
+const types = attachments.map((a) => a?.type).filter(Boolean);
+const hasImage = types.includes("image");
+const hasVideo = types.includes("video");
+if (hasImage && hasVideo) {
+return "[La persona ha enviado fotos y/o vídeo directamente por Instagram DM]";
+}
+if (hasVideo && !hasImage) {
+return "[La persona ha enviado un vídeo directamente por Instagram DM]";
+}
+return "[La persona ha enviado una o varias fotos directamente por Instagram DM]";
+}
+
 async function handleMessagingEvent(event) {
 if (event.message?.is_echo) return;
-const text = event.message?.text;
-if (!text) return;
+const rawText = event.message?.text;
+const attachmentNote = describeAttachments(event);
+if (!rawText && !attachmentNote) return;
+const text = [rawText, attachmentNote].filter(Boolean).join("\n");
 const senderId = event.sender?.id;
 if (!senderId) return;
 const messageId = event.message?.mid || `${senderId}-${event.timestamp}`;
