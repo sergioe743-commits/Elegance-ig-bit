@@ -96,6 +96,28 @@ console.error("[webhook] Error procesando evento:", err);
 });
 });
 
+// --- WhatsApp (360dialog) sandbox webhook -------------------------------
+// Ruta aislada para probar la conexion 360dialog -> Cloud API en modo
+// sandbox, sin tocar nada de la logica de Instagram de arriba. Guarda los
+// ultimos eventos en memoria (no persistente) para poder verificarlos desde
+// /webhook/whatsapp/recent mientras probamos.
+const whatsappSandboxEvents = [];
+const WHATSAPP_SANDBOX_MAX_EVENTS = 20;
+
+app.post("/webhook/whatsapp", (req, res) => {
+const event = { receivedAt: new Date().toISOString(), body: req.body };
+whatsappSandboxEvents.unshift(event);
+if (whatsappSandboxEvents.length > WHATSAPP_SANDBOX_MAX_EVENTS) {
+whatsappSandboxEvents.length = WHATSAPP_SANDBOX_MAX_EVENTS;
+}
+console.log("[whatsapp-sandbox] Evento recibido:", JSON.stringify(req.body));
+res.sendStatus(200);
+});
+
+app.get("/webhook/whatsapp/recent", (_req, res) => {
+res.json(whatsappSandboxEvents);
+});
+
 function verifySignature(req) {
 const signature = req.get("X-Hub-Signature-256");
 const secret = process.env.META_APP_SECRET;
