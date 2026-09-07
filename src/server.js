@@ -19,6 +19,8 @@ const { unmarkProcessed, alreadyProcessed, markProcessed, getHistory, appendTurn
 const { startCommentSweep } = require("./commentSweep");
 const { startDmSweep } = require("./dmSweep");
 const { EXCLUDED_USERNAMES } = require("./excludedAccounts");
+const { insertEvent, getRecentEvents } = require("./db");
+const { parseWhatsAppWebhookBody } = require("./whatsappEvents");
 const {
 ESCALATION_HOLDING_MESSAGE_PATIENT,
 ESCALATION_HOLDING_MESSAGE_COMMENT,
@@ -96,26 +98,47 @@ console.error("[webhook] Error procesando evento:", err);
 });
 });
 
-// --- WhatsApp (360dialog) sandbox webhook -------------------------------
-// Ruta aislada para probar la conexion 360dialog -> Cloud API en modo
-// sandbox, sin tocar nada de la logica de Instagram de arriba. Guarda los
-// ultimos eventos en memoria (no persistente) para poder verificarlos desde
-// /webhook/whatsapp/recent mientras probamos.
-const whatsappSandboxEvents = [];
-const WHATSAPP_SANDBOX_MAX_EVENTS = 20;
+// --- WhatsApp (360dialog) webhook -- canal + WABA (mismo endpoint) -----
+// Recibe mensajes entrantes, estados de mensajes salientes, y eventos de
+// coexistencia (smb_message_echoes: mensajes que el equipo envio desde la
+// app WhatsApp Business). Verifica un secreto compartido (encabezado
+// personalizado configurado en 360dialog) para que no cualquiera pueda
+// mandarnos eventos falsos, y persiste cada evento en SQLite (src/db.js)
+// con deduplicacion -- ya no se pierde nada al reiniciar el proceso.
+function verifyWhatsAppWebhookSecret(req) {
+const expected = process.env.WHATSAPP_WEBHOOK_SECRET;
+if (!expected) return true; // no configurado todavia -- no bloquear en local/dev
+return req.get("X-360dialog-Secret") === expected;
+}
 
 app.post("/webhook/whatsapp", (req, res) => {
-const event = { receivedAt: new Date().toISOString(), body: req.body };
-whatsappSandboxEvents.unshift(event);
-if (whatsappSandboxEvents.length > WHATSAPP_SANDBOX_MAX_EVENTS) {
-whatsappSandboxEvents.length = WHATSAPP_SANDBOX_MAX_EVENTS;
+if (!verifyWhatsAppWebhookSecret(req)) {
+console.warn("[whatsapp] Secreto invalido -- peticion descartada.");
+return res.sendStatus(401);
 }
-console.log("[whatsapp-sandbox] Evento recibido:", JSON.stringify(req.body));
 res.sendStatus(200);
+try {
+const events = parseWhatsAppWebhookBody(req.body);
+if (events.length === 0) {
+insertEvent({
+received_at: new Date().toISOString(),
+channel: "whatsapp",
+direction: "unknown",
+event_type: "unrecognized_payload",
+raw: req.body,
+});
+} else {
+for (const evt of events) insertEvent(evt);
+}
+console.log(`[whatsapp] ${events.length || 1} evento(s) guardado(s).`);
+} catch (err) {
+console.error("[whatsapp] Error procesando/guardando evento:", describeError(err));
+}
 });
 
-app.get("/webhook/whatsapp/recent", (_req, res) => {
-res.json(whatsappSandboxEvents);
+app.get("/webhook/whatsapp/recent", (req, res) => {
+const limit = Math.min(Number(req.query.limit) || 50, 200);
+res.json(getRecentEvents(limit, "whatsapp"));
 });
 
 function verifySignature(req) {
@@ -182,7 +205,7 @@ const audience = detectAudience(text);
 }
 
 // Detecta si un evento de mensajeria trae fotos/video adjuntos (sin texto o
-// junto con texto) y devuelve una nota sintetica en español para dar
+// junto con texto) y devuelve una nota sintetica en espaÃ±ol para dar
 // contexto al modelo. Sin esto, un DM que solo trae adjuntos (Meta no manda
 // "text" en ese caso) se ignoraba en silencio y la persona se quedaba sin
 // ninguna respuesta.
@@ -193,21 +216,52 @@ const types = attachments.map((a) => a?.type).filter(Boolean);
 const hasImage = types.includes("image");
 const hasVideo = types.includes("video");
 if (hasImage && hasVideo) {
-return "[La persona ha enviado fotos y/o vídeo directamente por Instagram DM]";
+return "[La persona ha enviado fotos y/o vÃ­deo directamente por Instagram DM]";
 }
 if (hasVideo && !hasImage) {
-return "[La persona ha enviado un vídeo directamente por Instagram DM]";
+return "[La persona ha enviado un vÃ­deo directamente por Instagram DM]";
 }
 return "[La persona ha enviado una o varias fotos directamente por Instagram DM]";
 }
 
+// Guarda el evento crudo de un DM (y su referral de anuncio, si lo trae)
+// en el registro persistente, sin tocar en nada el flujo de respuesta del
+// bot -- es aditivo puro. Antes esto se perdia por completo: cuando alguien
+// escribe desde el boton "Enviar mensaje" de un anuncio, Meta manda un
+// objeto "referral" (con el ad_id) en el evento de mensajeria, y no se
+// registraba en ningun sitio.
+function logInstagramDmEvent(event, { senderId }) {
+try {
+const referral = event.referral || event.message?.referral;
+insertEvent({
+received_at: new Date().toISOString(),
+channel: "instagram_dm",
+direction: event.message?.is_echo ? "outbound_status" : "inbound",
+event_type: referral ? "message_with_referral" : "message",
+external_id: event.message?.mid || null,
+ig_sender_id: senderId || null,
+message_type: event.message?.attachments?.[0]?.type || (event.message?.text ? "text" : null),
+text_body: event.message?.text || null,
+referral_ad_id: referral?.ad_id || null,
+referral_source_type: referral?.source || null,
+referral_source_url: null,
+referral_headline: referral?.headline || null,
+referral_body: referral?.body || null,
+raw: event,
+});
+} catch (err) {
+console.error("[dm] No se pudo registrar el evento en el histÃ³rico:", describeError(err));
+}
+}
+
 async function handleMessagingEvent(event) {
+const senderId = event.sender?.id;
+logInstagramDmEvent(event, { senderId });
 if (event.message?.is_echo) return;
 const rawText = event.message?.text;
 const attachmentNote = describeAttachments(event);
 if (!rawText && !attachmentNote) return;
 const text = [rawText, attachmentNote].filter(Boolean).join("\n");
-const senderId = event.sender?.id;
 if (!senderId) return;
 const messageId = event.message?.mid || `${senderId}-${event.timestamp}`;
 await processMessage({ senderId, text, messageId });
