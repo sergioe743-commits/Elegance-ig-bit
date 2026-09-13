@@ -1,7 +1,10 @@
 // Application bootstrap.
-// Start the existing Instagram/WhatsApp webhook server, then the isolated
-// Meta-Ads-only WhatsApp automation. WHATSAPP_BOT_MODE defaults to shadow.
+// Starts the webhook server, the Meta-Ads-only WhatsApp automation and the
+// persistent lead/funnel tracker.
 
 require("./server");
 const { startWhatsAppBot } = require("./whatsappBot");
+const { startLeadTracker } = require("./leadTracker");
+
 startWhatsAppBot();
+startLeadTracker();
