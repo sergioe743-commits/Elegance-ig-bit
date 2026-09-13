@@ -352,3 +352,86 @@ console.log(`Elegance IG Bot escuchando en el puerto ${PORT}`);
 
 startCommentSweep(processComment);
 startDmSweep(processMessage);
+
+// --- Envio de prueba por la API de 360dialog ---------------------------------
+// Endpoint de verificacion: comprueba que la clave de API del canal de
+// produccion funciona y que el servidor puede ENVIAR mensajes (hasta ahora solo
+// recibia). Protegido con el mismo secreto compartido que el webhook: si
+// WHATSAPP_WEBHOOK_SECRET no esta configurado, el endpoint queda deshabilitado.
+// Prueba los dos endpoints de 360dialog (Cloud API v2 y el antiguo v1) y
+// devuelve el resultado de cada intento, para diagnosticar en una sola pasada.
+const D360_ENDPOINTS = [
+  {
+    name: "cloud-v2",
+    url: "https://waba-v2.360dialog.io/messages",
+    body: (to, text) => ({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "text",
+      text: { body: text },
+    }),
+  },
+  {
+    name: "legacy-v1",
+    url: "https://waba.360dialog.io/v1/messages",
+    body: (to, text) => ({
+      to,
+      type: "text",
+      text: { body: text },
+    }),
+  },
+];
+
+app.get("/whatsapp/send-test", (_req, res) => {
+  res.json({
+    ok: true,
+    endpointDesplegado: true,
+    tieneApiKey: Boolean(process.env.WHATSAPP_360DIALOG_API_KEY),
+    tieneSecreto: Boolean(process.env.WHATSAPP_WEBHOOK_SECRET),
+  });
+});
+
+app.post("/whatsapp/send-test", async (req, res) => {
+  const expected = process.env.WHATSAPP_WEBHOOK_SECRET;
+  if (!expected) {
+    return res
+      .status(503)
+      .json({ ok: false, error: "WHATSAPP_WEBHOOK_SECRET no configurado: endpoint deshabilitado." });
+  }
+  if (req.get("X-360dialog-Secret") !== expected) {
+    return res.status(401).json({ ok: false, error: "Secreto invalido." });
+  }
+
+  const apiKey = process.env.WHATSAPP_360DIALOG_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ ok: false, error: "Falta WHATSAPP_360DIALOG_API_KEY en el entorno." });
+  }
+
+  const to = String(req.body?.to || "").replace(/[^0-9]/g, "");
+  const text = String(req.body?.text || "").trim();
+  if (!to || !text) {
+    return res.status(400).json({ ok: false, error: "Faltan 'to' (solo digitos) o 'text'." });
+  }
+
+  const axios = require("axios");
+  const intentos = [];
+
+  for (const ep of D360_ENDPOINTS) {
+    try {
+      const r = await axios.post(ep.url, ep.body(to, text), {
+        headers: { "D360-API-KEY": apiKey, "Content-Type": "application/json" },
+        timeout: 20000,
+      });
+      intentos.push({ endpoint: ep.name, ok: true, status: r.status, data: r.data });
+      console.log(`[whatsapp] Envio de prueba OK via ${ep.name} -> ${to}`);
+      return res.json({ ok: true, enviadoPor: ep.name, intentos });
+    } catch (err) {
+      intentos.push({ endpoint: ep.name, ok: false, error: describeError(err) });
+      console.warn(`[whatsapp] Envio de prueba fallo via ${ep.name}: ${describeError(err)}`);
+    }
+  }
+
+  return res.status(502).json({ ok: false, error: "Ningun endpoint de 360dialog acepto el envio.", intentos });
+});
+
