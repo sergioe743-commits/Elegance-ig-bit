@@ -32,8 +32,10 @@ const D360_ENDPOINTS = [
 ];
 
 function botMode() {
-  const mode = String(process.env.WHATSAPP_BOT_MODE || "shadow").toLowerCase();
-  return ["off", "shadow", "on"].includes(mode) ? mode : "shadow";
+  // Phase 1 is intentionally live for Meta Ads leads. Set the env var to
+  // "shadow" or "off" at any time to stop outbound automation without a deploy.
+  const mode = String(process.env.WHATSAPP_BOT_MODE || "on").toLowerCase();
+  return ["off", "shadow", "on"].includes(mode) ? mode : "on";
 }
 
 function rowsForContact(waId, limit = 100) {
@@ -46,8 +48,6 @@ function rowsForContact(waId, limit = 100) {
 }
 
 function isMetaAdsLead(waId) {
-  // Eligibility persists for the current contact once WhatsApp has delivered
-  // a Click-to-WhatsApp referral/ad id. We never infer paid origin from text.
   return Boolean(db.prepare(`
     SELECT 1 FROM events
     WHERE channel = 'whatsapp'
@@ -169,8 +169,6 @@ async function processCycle() {
     if (processed.has(key)) continue;
     const age = Date.now() - new Date(event.received_at).getTime();
     if (!(age >= 0 && age < MAX_MESSAGE_AGE_MS)) continue;
-
-    // Critical Phase-1 gate: no Meta referral = no bot action.
     if (!isMetaAdsLead(event.contact_wa_id)) continue;
     if (humanRecentlyIntervened(event.contact_wa_id)) continue;
     if (dailyBotReplies(event.contact_wa_id) >= MAX_DAILY_REPLIES_PER_CONTACT) continue;
@@ -204,7 +202,7 @@ async function processCycle() {
         console.error(`[wabot] Error enviando a ${event.contact_wa_id}: ${err.message}`);
       }
     } catch (err) {
-      processed.delete(key); // allow retry on generation/storage failure
+      processed.delete(key);
       console.error(`[wabot] Error procesando ${event.contact_wa_id}: ${err.message}`);
     }
   }
