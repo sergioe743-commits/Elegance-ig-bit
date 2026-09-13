@@ -32,8 +32,6 @@ const D360_ENDPOINTS = [
 ];
 
 function botMode() {
-  // Phase 1 is intentionally live for Meta Ads leads. Set the env var to
-  // "shadow" or "off" at any time to stop outbound automation without a deploy.
   const mode = String(process.env.WHATSAPP_BOT_MODE || "on").toLowerCase();
   return ["off", "shadow", "on"].includes(mode) ? mode : "on";
 }
@@ -134,13 +132,25 @@ async function sendWhatsApp(to, text) {
   throw new Error(lastError || "Envio fallido");
 }
 
+function persistentReplyId(event, mode) {
+  return `bot:${mode}:${event.external_id || `db-${event.id}`}`;
+}
+
+function alreadyPersistentlyHandled(event, mode) {
+  return Boolean(db.prepare(`
+    SELECT 1 FROM events
+    WHERE channel = 'whatsapp' AND external_id = ?
+    LIMIT 1
+  `).get(persistentReplyId(event, mode)));
+}
+
 function storeBotReply(event, reply, mode, sendResult = null, sendError = null) {
   insertEvent({
     received_at: new Date().toISOString(),
     channel: "whatsapp",
     direction: "bot_reply",
-    event_type: mode === "shadow" ? "bot_shadow_reply" : "bot_sent_reply",
-    external_id: `bot:${mode}:${event.external_id || event.id}:${Date.now()}`,
+    event_type: mode === "shadow" ? "bot_shadow_reply" : (sendError ? "bot_send_failed" : "bot_sent_reply"),
+    external_id: persistentReplyId(event, mode),
     contact_wa_id: event.contact_wa_id,
     contact_name: event.contact_name,
     message_type: "text",
@@ -167,6 +177,10 @@ async function processCycle() {
     if (event.direction !== "inbound" || !event.contact_wa_id || !event.text_body) continue;
     const key = event.external_id || `db:${event.id}`;
     if (processed.has(key)) continue;
+    if (alreadyPersistentlyHandled(event, mode)) {
+      processed.add(key);
+      continue;
+    }
     const age = Date.now() - new Date(event.received_at).getTime();
     if (!(age >= 0 && age < MAX_MESSAGE_AGE_MS)) continue;
     if (!isMetaAdsLead(event.contact_wa_id)) continue;
