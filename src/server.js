@@ -26,6 +26,7 @@ const { startDmSweep } = require("./dmSweep");
 const { EXCLUDED_USERNAMES } = require("./excludedAccounts");
 const { insertEvent, getRecentEvents } = require("./db");
 const { parseWhatsAppWebhookBody } = require("./whatsappEvents");
+const { saveFormContext } = require("./metaFormContext");
 const {
   ESCALATION_HOLDING_MESSAGE_PATIENT,
   ESCALATION_HOLDING_MESSAGE_COMMENT,
@@ -136,6 +137,30 @@ app.post("/webhook/whatsapp", (req, res) => {
 app.get("/webhook/whatsapp/recent", (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 200);
   res.json(getRecentEvents(limit, "whatsapp"));
+});
+
+// Structured Meta Instant Form answers. Zapier/CRM can POST the form payload
+// here before the person opens WhatsApp. The bot then matches it by phone and
+// uses the answers as internal CRM context, avoiding repeated questions.
+app.post("/webhook/meta-lead", (req, res) => {
+  const expected = process.env.WHATSAPP_WEBHOOK_SECRET;
+  if (!expected) {
+    return res.status(503).json({ ok: false, error: "Webhook secret not configured." });
+  }
+  if (req.get("X-Elegance-Secret") !== expected) {
+    return res.status(401).json({ ok: false, error: "Invalid secret." });
+  }
+  try {
+    const row = saveFormContext(req.body || {});
+    if (!row.wa_id) {
+      return res.status(400).json({ ok: false, error: "No usable phone number found in lead payload." });
+    }
+    console.log(`[meta-lead] Form context stored for ${row.wa_id}.`);
+    return res.json({ ok: true, lead_id: row.lead_id, matched_phone: row.wa_id });
+  } catch (err) {
+    console.error("[meta-lead] Error guardando contexto:", describeError(err));
+    return res.status(500).json({ ok: false, error: "Could not store form context." });
+  }
 });
 
 function verifySignature(req) {
