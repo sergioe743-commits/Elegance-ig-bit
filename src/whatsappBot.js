@@ -5,6 +5,7 @@
 const axios = require("axios");
 const { db, insertEvent, getRecentEvents } = require("./db");
 const { generateReply } = require("./claude");
+const { findFormContext, buildFormContext } = require("./metaFormContext");
 
 const MAX_PER_CYCLE = 3;
 const MAX_DAILY_REPLIES_PER_CONTACT = 12;
@@ -46,6 +47,7 @@ function rowsForContact(waId, limit = 100) {
 }
 
 function isMetaAdsLead(waId) {
+  if (findFormContext(waId)) return true;
   return Boolean(db.prepare(`
     SELECT 1 FROM events
     WHERE channel = 'whatsapp'
@@ -103,13 +105,17 @@ function metaContext(waId) {
     ORDER BY received_at ASC
     LIMIT 1
   `).get(waId);
-  if (!referral) return "Lead procedente de una campana de Meta Ads que abrio WhatsApp.";
-  return [
-    "Lead procedente de una campana de Meta Ads que abrio WhatsApp.",
-    referral.referral_headline ? `Anuncio: ${referral.referral_headline}` : null,
-    referral.referral_body ? `Texto del anuncio: ${referral.referral_body}` : null,
-    referral.referral_ad_id ? `Meta ad_id: ${referral.referral_ad_id}` : null,
-  ].filter(Boolean).join("\n");
+  const formContext = buildFormContext(waId);
+  const adContext = referral
+    ? [
+        "Lead procedente de una campana de Meta Ads que abrio WhatsApp.",
+        referral.referral_headline ? `Anuncio: ${referral.referral_headline}` : null,
+        referral.referral_body ? `Texto del anuncio: ${referral.referral_body}` : null,
+        referral.referral_ad_id ? `Meta ad_id: ${referral.referral_ad_id}` : null,
+      ].filter(Boolean).join("\n")
+    : "Lead procedente de un formulario de Meta Ads conectado con WhatsApp.";
+
+  return [adContext, formContext].filter(Boolean).join("\n\n");
 }
 
 async function sendWhatsApp(to, text) {
