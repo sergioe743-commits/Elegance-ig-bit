@@ -436,3 +436,62 @@ app.post("/whatsapp/send-test", async (req, res) => {
 });
 
 // --- Auto-respuesta de prueba: "PRUEBA BOT" ---
+
+// --- Auto-respuesta de prueba: "PRUEBA BOT" ----------------------------------
+// Sondeo aditivo: cada 15 s revisa los ultimos eventos de WhatsApp y responde
+// UNICAMENTE a los mensajes cuyo texto sea exactamente "PRUEBA BOT", y solo si
+// llegaron en los ultimos 3 minutos. Sirve para verificar el envio real por la
+// API de 360dialog sin tocar ninguna conversacion de pacientes. Es tambien el
+// esqueleto del auto-respondedor: webhook entrante -> respuesta saliente.
+const PRUEBA_RESPONDIDOS = new Set();
+
+async function enviarWhatsApp(to, text) {
+  const apiKey = process.env.WHATSAPP_360DIALOG_API_KEY;
+  if (!apiKey) throw new Error("Falta WHATSAPP_360DIALOG_API_KEY");
+  const axios = require("axios");
+  let ultimoError = null;
+  for (const ep of D360_ENDPOINTS) {
+    try {
+      const r = await axios.post(ep.url, ep.body(to, text), {
+        headers: { "D360-API-KEY": apiKey, "Content-Type": "application/json" },
+        timeout: 20000,
+      });
+      return { endpoint: ep.name, status: r.status, data: r.data };
+    } catch (err) {
+      ultimoError = describeError(err);
+    }
+  }
+  throw new Error(ultimoError || "envio fallido");
+}
+
+function iniciarPruebaSweep() {
+  setInterval(async () => {
+    try {
+      const eventos = getRecentEvents(20, "whatsapp");
+      const ahora = Date.now();
+      for (const e of eventos) {
+        if (e.direction !== "inbound") continue;
+        if (!e.contact_wa_id) continue;
+        if (String(e.text_body || "").trim().toUpperCase() !== "PRUEBA BOT") continue;
+        if (PRUEBA_RESPONDIDOS.has(e.external_id)) continue;
+        const edad = ahora - new Date(e.received_at).getTime();
+        if (!(edad >= 0 && edad < 180000)) continue;
+        PRUEBA_RESPONDIDOS.add(e.external_id);
+        try {
+          const r = await enviarWhatsApp(
+            e.contact_wa_id,
+            "Prueba correcta. El servidor puede enviar mensajes por WhatsApp de forma automatica."
+          );
+          console.log("[whatsapp] Respuesta de prueba enviada a " + e.contact_wa_id + " via " + r.endpoint);
+        } catch (err) {
+          console.error("[whatsapp] Fallo la respuesta de prueba: " + err.message);
+        }
+      }
+    } catch (err) {
+      console.error("[whatsapp] Error en el sondeo de prueba: " + describeError(err));
+    }
+  }, 15000);
+  console.log("[whatsapp] Sondeo de prueba activo (responde solo a 'PRUEBA BOT').");
+}
+
+iniciarPruebaSweep();
