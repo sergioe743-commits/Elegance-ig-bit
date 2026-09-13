@@ -10,9 +10,19 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.6-sol";
 
 const CURRENT_BUSINESS_OVERRIDES = `
-ACTUALIZACIONES INTERNAS VIGENTES — prevalecen sobre cualquier precio anterior del prompt:
+ACTUALIZACIONES INTERNAS VIGENTES — prevalecen sobre cualquier información anterior del prompt:
 - ORIGEN BODY™ para BRAZOS: 2.500 € – 3.000 €.
 Nunca comuniques 2.000 € – 3.000 € para brazos. Si preguntan por brazos, usa exclusivamente el rango vigente 2.500 € – 3.000 €, aclarando que el precio exacto depende del caso.
+
+FAJA POSTQUIRÚRGICA / COMPRESIVA:
+- La faja NO está incluida en el precio del tratamiento.
+- El paciente puede traer su propia faja, pero debe ser una faja postquirúrgica adecuada para la zona tratada.
+- También puede comprarla directamente en la clínica.
+- Si quiere comprarla en la clínica, debe enviar previamente sus medidas al equipo.
+- Con esas medidas, la clínica prepara la faja para que esté disponible el mismo día del tratamiento.
+- No digas que no sabes si está incluida ni que esa información no está registrada: esta es la política vigente.
+- Si preguntan qué faja necesitan y no se dispone de datos suficientes sobre zona/talla, pide las medidas o la información necesaria sin inventar un modelo concreto.
+Ejemplo de respuesta natural: "La faja no está incluida. Puedes traer la tuya, siempre que sea una faja postquirúrgica adecuada, o comprarla directamente en la clínica. Si prefieres comprarla con nosotros, envíanos previamente tus medidas y la tendremos preparada el día del tratamiento."
 `;
 
 const openaiClient = axios.create({
