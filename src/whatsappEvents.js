@@ -13,8 +13,6 @@
 // guarda siempre en raw_json.
 
 function extractReferral(message) {
-  // El "referral" de clic-en-anuncio puede venir en distintos sitios segun
-  // el payload; se cubren los que hemos visto documentados/probados.
   const referral = message?.referral || message?.context?.referral;
   if (!referral) return {};
   return {
@@ -70,14 +68,21 @@ function normalizeCloudApiChange(change, body, receivedAt) {
   const contact = value.contacts?.[0];
 
   for (const message of value.messages || []) {
+    // In a coexistence app echo, `from` is commonly the clinic/business
+    // number and `to` is the patient. For normal inbound messages the patient
+    // is in `from`. Correct attribution is essential for human takeover and
+    // response-time analytics.
+    const waId = isAppEcho
+      ? (message.to || contact?.wa_id || contact?.user_id || message.from || null)
+      : (message.from || contact?.wa_id || contact?.user_id || null);
+
     events.push({
       received_at: receivedAt,
       channel: "whatsapp",
       direction: isAppEcho ? "app_echo" : "inbound",
       event_type: isAppEcho ? "smb_message_echo" : "message",
       external_id: message.id || null,
-      contact_wa_id:
-        message.from || contact?.wa_id || contact?.user_id || null,
+      contact_wa_id: waId,
       contact_name: contact?.profile?.name || null,
       message_type: message.type || null,
       text_body: message.text?.body || null,
@@ -104,9 +109,6 @@ function normalizeCloudApiChange(change, body, receivedAt) {
   return events;
 }
 
-// Devuelve SIEMPRE una lista de filas listas para insertEvent (puede venir
-// vacia si el payload no trae ni mensajes ni estados, p.ej. un ping/challenge
-// vacio -- ese caso se guarda igual como evento generico mas abajo en server.js).
 function parseWhatsAppWebhookBody(body) {
   const receivedAt = new Date().toISOString();
   if (Array.isArray(body?.messages) || Array.isArray(body?.statuses)) {
