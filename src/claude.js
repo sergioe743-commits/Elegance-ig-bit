@@ -9,6 +9,12 @@ const { buildSystemPrompt } = require("./prompts");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.6-sol";
 
+const CURRENT_BUSINESS_OVERRIDES = `
+ACTUALIZACIONES INTERNAS VIGENTES — prevalecen sobre cualquier precio anterior del prompt:
+- ORIGEN BODY™ para BRAZOS: 2.500 € – 3.000 €.
+Nunca comuniques 2.000 € – 3.000 € para brazos. Si preguntan por brazos, usa exclusivamente el rango vigente 2.500 € – 3.000 €, aclarando que el precio exacto depende del caso.
+`;
+
 const openaiClient = axios.create({
   baseURL: "https://api.openai.com/v1",
   headers: {
@@ -35,7 +41,7 @@ async function requestGPT(systemPrompt, messages, maxCompletionTokens) {
     return await openaiClient.post("/chat/completions", {
       model: OPENAI_MODEL,
       max_completion_tokens: maxCompletionTokens,
-      messages: [{ role: "system", content: systemPrompt }, ...messages],
+      messages: [{ role: "system", content: `${systemPrompt}\n\n${CURRENT_BUSINESS_OVERRIDES}` }, ...messages],
     });
   } catch (err) {
     const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
