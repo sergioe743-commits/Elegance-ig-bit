@@ -435,3 +435,4 @@ app.post("/whatsapp/send-test", async (req, res) => {
   return res.status(502).json({ ok: false, error: "Ningun endpoint de 360dialog acepto el envio.", intentos });
 });
 
+// --- Auto-respuesta de prueba: "PRUEBA BOT" ---
