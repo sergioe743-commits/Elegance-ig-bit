@@ -1,10 +1,12 @@
 // Application bootstrap.
-// Starts the main webhook server, the Meta-Ads-only WhatsApp automation and the
-// persistent lead/funnel tracker. Meta Lead Ads runs as a dedicated Railway service.
+// Starts the main webhook server, the Meta-Ads-only WhatsApp automation,
+// persistent lead/funnel tracking and Google Sheets treatment attribution.
 
 require("./server");
 const { startWhatsAppBot } = require("./whatsappBot");
 const { startLeadTracker } = require("./leadTracker");
+const { startTreatmentSync } = require("./treatmentSync");
 
 startWhatsAppBot();
 startLeadTracker();
+startTreatmentSync();
