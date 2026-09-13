@@ -3,6 +3,7 @@
 // Modes: off = disabled, shadow = generate/store only, on = send + store.
 
 const axios = require("axios");
+const crypto = require("crypto");
 const { db, insertEvent, getRecentEvents } = require("./db");
 const { generateReply } = require("./claude");
 const { findFormContext, buildFormContext } = require("./metaFormContext");
@@ -11,7 +12,23 @@ const MAX_PER_CYCLE = 3;
 const MAX_DAILY_REPLIES_PER_CONTACT = 12;
 const MAX_MESSAGE_AGE_MS = 30 * 60 * 1000;
 const HUMAN_LOCK_MS = 24 * 60 * 60 * 1000;
+const DUPLICATE_TEXT_WINDOW_MS = 2 * 60 * 1000;
 const processed = new Set();
+const processingContacts = new Set();
+let cycleRunning = false;
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS bot_reply_claims (
+  inbound_key TEXT PRIMARY KEY,
+  wa_id TEXT NOT NULL,
+  inbound_event_id INTEGER,
+  text_hash TEXT NOT NULL,
+  claimed_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'processing'
+);
+CREATE INDEX IF NOT EXISTS idx_bot_reply_claims_contact_hash
+  ON bot_reply_claims(wa_id, text_hash, claimed_at);
+`);
 
 const D360_ENDPOINTS = [
   {
@@ -41,7 +58,7 @@ function rowsForContact(waId, limit = 100) {
   return db.prepare(`
     SELECT * FROM events
     WHERE channel = 'whatsapp' AND contact_wa_id = ?
-    ORDER BY received_at DESC
+    ORDER BY id DESC
     LIMIT ?
   `).all(waId, limit);
 }
@@ -65,7 +82,7 @@ function humanRecentlyIntervened(waId) {
     WHERE channel = 'whatsapp'
       AND contact_wa_id = ?
       AND direction = 'app_echo'
-    ORDER BY received_at DESC
+    ORDER BY id DESC
     LIMIT 1
   `).get(waId);
   if (!row?.received_at) return false;
@@ -80,6 +97,7 @@ function dailyBotReplies(waId) {
     WHERE channel = 'whatsapp'
       AND contact_wa_id = ?
       AND direction = 'bot_reply'
+      AND event_type <> 'bot_send_failed'
       AND received_at >= ?
   `).get(waId, since);
   return Number(row?.n || 0);
@@ -102,7 +120,7 @@ function metaContext(waId) {
     FROM events
     WHERE channel = 'whatsapp' AND contact_wa_id = ?
       AND referral_ad_id IS NOT NULL
-    ORDER BY received_at ASC
+    ORDER BY id ASC
     LIMIT 1
   `).get(waId);
   const formContext = buildFormContext(waId);
@@ -150,6 +168,94 @@ function alreadyPersistentlyHandled(event, mode) {
   `).get(persistentReplyId(event, mode)));
 }
 
+function inboundKey(event) {
+  return String(event.external_id || `db-${event.id}`);
+}
+
+function normalizedMessageText(text) {
+  return String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function messageHash(text) {
+  return crypto.createHash("sha256").update(normalizedMessageText(text)).digest("hex");
+}
+
+function isLatestInboundForContact(event) {
+  const row = db.prepare(`
+    SELECT id FROM events
+    WHERE channel = 'whatsapp'
+      AND contact_wa_id = ?
+      AND direction = 'inbound'
+      AND text_body IS NOT NULL
+      AND TRIM(text_body) <> ''
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(event.contact_wa_id);
+  return Number(row?.id) === Number(event.id);
+}
+
+function hasReplyAfterInbound(event) {
+  return Boolean(db.prepare(`
+    SELECT 1 FROM events
+    WHERE channel = 'whatsapp'
+      AND contact_wa_id = ?
+      AND id > ?
+      AND (
+        direction = 'app_echo'
+        OR (direction = 'bot_reply' AND event_type <> 'bot_send_failed')
+      )
+    LIMIT 1
+  `).get(event.contact_wa_id, event.id));
+}
+
+function claimInbound(event) {
+  const key = inboundKey(event);
+  const hash = messageHash(event.text_body);
+  const recentSince = new Date(Date.now() - DUPLICATE_TEXT_WINDOW_MS).toISOString();
+
+  const duplicateSent = db.prepare(`
+    SELECT 1 FROM bot_reply_claims
+    WHERE wa_id = ?
+      AND text_hash = ?
+      AND status IN ('sent','shadow')
+      AND claimed_at >= ?
+    LIMIT 1
+  `).get(event.contact_wa_id, hash, recentSince);
+  if (duplicateSent) return false;
+
+  const existing = db.prepare(`
+    SELECT status FROM bot_reply_claims WHERE inbound_key = ?
+  `).get(key);
+  if (existing && existing.status !== "failed") return false;
+
+  const now = new Date().toISOString();
+  if (existing?.status === "failed") {
+    db.prepare(`
+      UPDATE bot_reply_claims
+      SET wa_id = ?, inbound_event_id = ?, text_hash = ?, claimed_at = ?, status = 'processing'
+      WHERE inbound_key = ?
+    `).run(event.contact_wa_id, event.id, hash, now, key);
+    return true;
+  }
+
+  try {
+    db.prepare(`
+      INSERT INTO bot_reply_claims
+        (inbound_key, wa_id, inbound_event_id, text_hash, claimed_at, status)
+      VALUES (?, ?, ?, ?, ?, 'processing')
+    `).run(key, event.contact_wa_id, event.id, hash, now);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function markClaim(event, status) {
+  db.prepare(`
+    UPDATE bot_reply_claims SET status = ? WHERE inbound_key = ?
+  `).run(status, inboundKey(event));
+}
+
 function storeBotReply(event, reply, mode, sendResult = null, sendError = null) {
   insertEvent({
     received_at: new Date().toISOString(),
@@ -173,58 +279,93 @@ function storeBotReply(event, reply, mode, sendResult = null, sendError = null) 
 }
 
 async function processCycle() {
-  const mode = botMode();
-  if (mode === "off") return;
+  if (cycleRunning) return;
+  cycleRunning = true;
+  try {
+    const mode = botMode();
+    if (mode === "off") return;
 
-  const events = getRecentEvents(100, "whatsapp");
-  let handled = 0;
-  for (const event of events) {
-    if (handled >= MAX_PER_CYCLE) break;
-    if (event.direction !== "inbound" || !event.contact_wa_id || !event.text_body) continue;
-    const key = event.external_id || `db:${event.id}`;
-    if (processed.has(key)) continue;
-    if (alreadyPersistentlyHandled(event, mode)) {
-      processed.add(key);
-      continue;
-    }
-    const age = Date.now() - new Date(event.received_at).getTime();
-    if (!(age >= 0 && age < MAX_MESSAGE_AGE_MS)) continue;
-    if (!isMetaAdsLead(event.contact_wa_id)) continue;
-    if (humanRecentlyIntervened(event.contact_wa_id)) continue;
-    if (dailyBotReplies(event.contact_wa_id) >= MAX_DAILY_REPLIES_PER_CONTACT) continue;
+    const events = getRecentEvents(100, "whatsapp");
+    let handled = 0;
+    for (const event of events) {
+      if (handled >= MAX_PER_CYCLE) break;
+      if (event.direction !== "inbound" || !event.contact_wa_id || !event.text_body) continue;
+      if (!isLatestInboundForContact(event)) continue;
+      if (hasReplyAfterInbound(event)) continue;
+      if (processingContacts.has(event.contact_wa_id)) continue;
 
-    processed.add(key);
-    handled += 1;
-    try {
-      const history = conversationHistory(event.contact_wa_id).filter(
-        (turn) => turn.content !== event.text_body
-      );
-      const reply = await generateReply({
-        text: event.text_body,
-        audience: "patient",
-        channel: "whatsapp",
-        context: metaContext(event.contact_wa_id),
-        history,
-      });
-
-      if (mode === "shadow") {
-        storeBotReply(event, reply, mode);
-        console.log(`[wabot] SHADOW Meta Ads ${event.contact_wa_id}: ${reply}`);
+      const key = event.external_id || `db:${event.id}`;
+      if (processed.has(key)) continue;
+      if (alreadyPersistentlyHandled(event, mode)) {
+        processed.add(key);
+        continue;
+      }
+      const age = Date.now() - new Date(event.received_at).getTime();
+      if (!(age >= 0 && age < MAX_MESSAGE_AGE_MS)) continue;
+      if (!isMetaAdsLead(event.contact_wa_id)) continue;
+      if (humanRecentlyIntervened(event.contact_wa_id)) continue;
+      if (dailyBotReplies(event.contact_wa_id) >= MAX_DAILY_REPLIES_PER_CONTACT) continue;
+      if (!claimInbound(event)) {
+        processed.add(key);
         continue;
       }
 
+      processed.add(key);
+      processingContacts.add(event.contact_wa_id);
+      handled += 1;
       try {
-        const sent = await sendWhatsApp(event.contact_wa_id, reply);
-        storeBotReply(event, reply, mode, sent, null);
-        console.log(`[wabot] ON Meta Ads ${event.contact_wa_id}: enviado via ${sent.endpoint}`);
+        // Re-check after claiming in case a human/bot response arrived while this cycle was selecting work.
+        if (hasReplyAfterInbound(event) || !isLatestInboundForContact(event)) {
+          markClaim(event, "superseded");
+          continue;
+        }
+
+        const history = conversationHistory(event.contact_wa_id).filter(
+          (turn) => turn.content !== event.text_body
+        );
+        const reply = await generateReply({
+          text: event.text_body,
+          audience: "patient",
+          channel: "whatsapp",
+          context: metaContext(event.contact_wa_id),
+          history,
+        });
+
+        // Final guard: never send if a newer patient message or any reply appeared during GPT generation.
+        if (hasReplyAfterInbound(event) || !isLatestInboundForContact(event)) {
+          markClaim(event, "superseded");
+          console.log(`[wabot] Respuesta descartada por turno mas reciente para ${event.contact_wa_id}.`);
+          continue;
+        }
+
+        if (mode === "shadow") {
+          storeBotReply(event, reply, mode);
+          markClaim(event, "shadow");
+          console.log(`[wabot] SHADOW Meta Ads ${event.contact_wa_id}: ${reply}`);
+          continue;
+        }
+
+        try {
+          const sent = await sendWhatsApp(event.contact_wa_id, reply);
+          storeBotReply(event, reply, mode, sent, null);
+          markClaim(event, "sent");
+          console.log(`[wabot] ON Meta Ads ${event.contact_wa_id}: enviado via ${sent.endpoint}`);
+        } catch (err) {
+          storeBotReply(event, reply, mode, null, err.message);
+          markClaim(event, "failed");
+          processed.delete(key);
+          console.error(`[wabot] Error enviando a ${event.contact_wa_id}: ${err.message}`);
+        }
       } catch (err) {
-        storeBotReply(event, reply, mode, null, err.message);
-        console.error(`[wabot] Error enviando a ${event.contact_wa_id}: ${err.message}`);
+        markClaim(event, "failed");
+        processed.delete(key);
+        console.error(`[wabot] Error procesando ${event.contact_wa_id}: ${err.message}`);
+      } finally {
+        processingContacts.delete(event.contact_wa_id);
       }
-    } catch (err) {
-      processed.delete(key);
-      console.error(`[wabot] Error procesando ${event.contact_wa_id}: ${err.message}`);
     }
+  } finally {
+    cycleRunning = false;
   }
 }
 
@@ -233,7 +374,7 @@ function startWhatsAppBot() {
     processCycle().catch((err) => console.error("[wabot] Error de ciclo:", err.message));
   }, 15000);
   if (typeof timer.unref === "function") timer.unref();
-  console.log(`[wabot] Motor Meta Ads activo en modo ${botMode()}.`);
+  console.log(`[wabot] Motor Meta Ads activo en modo ${botMode()} con deduplicacion fuerte por turno.`);
   return timer;
 }
 
@@ -247,6 +388,8 @@ function status() {
     hasWhatsAppApiKey: Boolean(process.env.WHATSAPP_360DIALOG_API_KEY),
     humanLockHours: HUMAN_LOCK_MS / 3600000,
     maxDailyRepliesPerContact: MAX_DAILY_REPLIES_PER_CONTACT,
+    duplicateTextWindowSeconds: DUPLICATE_TEXT_WINDOW_MS / 1000,
+    strongTurnDeduplication: true,
   };
 }
 
@@ -255,7 +398,7 @@ function review(limit = 50) {
     SELECT id, received_at, contact_wa_id, contact_name, event_type, text_body, raw_json
     FROM events
     WHERE channel = 'whatsapp' AND direction = 'bot_reply'
-    ORDER BY received_at DESC
+    ORDER BY id DESC
     LIMIT ?
   `).all(Math.min(Number(limit) || 50, 200));
 }
