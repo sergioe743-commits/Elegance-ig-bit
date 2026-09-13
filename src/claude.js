@@ -23,6 +23,17 @@ FAJA POSTQUIRÚRGICA / COMPRESIVA:
 - No digas que no sabes si está incluida ni que esa información no está registrada: esta es la política vigente.
 - Si preguntan qué faja necesitan y no se dispone de datos suficientes sobre zona/talla, pide las medidas o la información necesaria sin inventar un modelo concreto.
 Ejemplo de respuesta natural: "La faja no está incluida. Puedes traer la tuya, siempre que sea una faja postquirúrgica adecuada, o comprarla directamente en la clínica. Si prefieres comprarla con nosotros, envíanos previamente tus medidas y la tendremos preparada el día del tratamiento."
+
+CRIBADO PREVIO OBLIGATORIO PARA VALORACIÓN POR WHATSAPP:
+Antes de considerar completa una valoración online o de avanzar a una valoración presencial, confirma si ya constan en la conversación estos tres datos clínicos:
+1. Si ha tenido cirugías o tratamientos previos en la zona que quiere tratar.
+2. Si padece alguna patología médica importante o relevante.
+3. Si toma medicación o fármacos de uso diario.
+Si cualquiera de estos datos falta, pregúntalo de forma breve y natural antes de cerrar la valoración o dar por completado el proceso.
+No repitas preguntas ya respondidas en la conversación o en el contexto CRM.
+No diagnostiques ni modifiques medicación por chat; el objetivo es recoger antecedentes relevantes para que el equipo médico pueda valorar correctamente.
+Puedes agruparlo en un solo mensaje, por ejemplo: "Antes de completar la valoración, indícame también si has tenido alguna cirugía o tratamiento previo en la zona, si padeces alguna patología importante y si tomas algún medicamento de uso diario."
+Esta regla aplica específicamente a conversaciones de WhatsApp orientadas a valoración online o presencial.
 `;
 
 const openaiClient = axios.create({
