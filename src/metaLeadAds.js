@@ -12,15 +12,9 @@ function leadsAccessToken() {
 
 async function fetchLead(leadgenId) {
   const token = leadsAccessToken();
-  if (!token) {
-    throw new Error("Falta META_LEADS_ACCESS_TOKEN (o IG_ACCESS_TOKEN compatible con leads_retrieval).");
-  }
-
+  if (!token) throw new Error("Falta token de Meta compatible con leads_retrieval.");
   const response = await axios.get(`${graphBase()}/${encodeURIComponent(leadgenId)}`, {
-    params: {
-      access_token: token,
-      fields: "id,created_time,ad_id,form_id,field_data",
-    },
+    params: { access_token: token, fields: "id,created_time,ad_id,form_id,field_data" },
     timeout: 20000,
   });
   return response.data;
@@ -48,6 +42,19 @@ function leadgenChanges(body) {
   return out;
 }
 
+async function persistPayload(payload) {
+  const forwardUrl = process.env.META_LEAD_FORWARD_URL;
+  const forwardSecret = process.env.META_LEAD_FORWARD_SECRET;
+  if (forwardUrl && forwardSecret) {
+    const response = await axios.post(forwardUrl, payload, {
+      headers: { "X-Elegance-Secret": forwardSecret, "Content-Type": "application/json" },
+      timeout: 20000,
+    });
+    return { forwarded: true, ...response.data };
+  }
+  return saveFormContext(payload);
+}
+
 async function ingestLeadgenChange(change) {
   const lead = await fetchLead(change.leadgen_id);
   const payload = {
@@ -60,19 +67,14 @@ async function ingestLeadgenChange(change) {
     adgroup_id: change.adgroup_id || null,
     created_time: lead.created_time || change.created_time || null,
   };
-  const saved = saveFormContext(payload);
-  if (!saved.wa_id) {
-    console.warn(`[meta-leads] Lead ${change.leadgen_id} recibido pero sin telefono util.`);
-  } else {
-    console.log(`[meta-leads] Lead ${change.leadgen_id} guardado y asociado a ${saved.wa_id}.`);
-  }
+  const saved = await persistPayload(payload);
+  console.log(`[meta-leads] Lead ${change.leadgen_id} recuperado y enviado al CRM principal.`);
   return saved;
 }
 
 async function handleMetaLeadWebhookBody(body) {
   const changes = leadgenChanges(body);
   if (!changes.length) return { handled: 0, saved: 0 };
-
   let saved = 0;
   for (const change of changes) {
     try {
@@ -86,9 +88,4 @@ async function handleMetaLeadWebhookBody(body) {
   return { handled: changes.length, saved };
 }
 
-module.exports = {
-  fetchLead,
-  leadgenChanges,
-  ingestLeadgenChange,
-  handleMetaLeadWebhookBody,
-};
+module.exports = { fetchLead, leadgenChanges, ingestLeadgenChange, handleMetaLeadWebhookBody };
