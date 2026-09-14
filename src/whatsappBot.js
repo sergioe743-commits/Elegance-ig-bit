@@ -63,9 +63,23 @@ function rowsForContact(waId, limit = 100) {
   `).all(waId, limit);
 }
 
+function looksLikeMetaAdsFormText(value) {
+  const text = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text.includes("he completado el formulario")) return false;
+  const hasZone = text.includes("que zona te gustaria tratar") || text.includes("zona te gustaria tratar");
+  const hasLeadField = text.includes("phone number") || text.includes("numero de telefono") || text.includes("full name");
+  return hasZone && hasLeadField;
+}
+
 function isMetaAdsLead(waId) {
   if (findFormContext(waId)) return true;
-  return Boolean(db.prepare(`
+
+  const referral = db.prepare(`
     SELECT 1 FROM events
     WHERE channel = 'whatsapp'
       AND contact_wa_id = ?
@@ -73,7 +87,23 @@ function isMetaAdsLead(waId) {
       AND referral_ad_id IS NOT NULL
       AND TRIM(referral_ad_id) <> ''
     LIMIT 1
-  `).get(waId));
+  `).get(waId);
+  if (referral) return true;
+
+  // Some Meta instant-form leads arrive through 360dialog without referral_ad_id.
+  // The WhatsApp text itself contains the completed Meta form. Recognize that
+  // unambiguous structure so these paid leads are not silently discarded.
+  const recentInbound = db.prepare(`
+    SELECT text_body FROM events
+    WHERE channel = 'whatsapp'
+      AND contact_wa_id = ?
+      AND direction = 'inbound'
+      AND text_body IS NOT NULL
+      AND TRIM(text_body) <> ''
+    ORDER BY id DESC
+    LIMIT 20
+  `).all(waId);
+  return recentInbound.some((row) => looksLikeMetaAdsFormText(row.text_body));
 }
 
 function humanRecentlyIntervened(waId) {
@@ -285,7 +315,10 @@ async function processCycle() {
     const mode = botMode();
     if (mode === "off") return;
 
-    const events = getRecentEvents(100, "whatsapp");
+    // Scan enough WhatsApp history to make the 12-hour recovery useful even
+    // after a busy period. Safety gates below still ensure only truly pending
+    // Meta Ads leads can be answered.
+    const events = getRecentEvents(500, "whatsapp");
     let handled = 0;
     for (const event of events) {
       if (handled >= MAX_PER_CYCLE) break;
