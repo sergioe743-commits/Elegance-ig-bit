@@ -24,6 +24,22 @@ function extractReferral(message) {
   };
 }
 
+function extractMessageText(message) {
+  if (message?.text?.body) return message.text.body;
+
+  // Preserve the fact that the patient sent photos in the textual conversation
+  // history. The bot does not diagnose the image; it only remembers that photos
+  // have already been received so it does not ask for them again later.
+  if (message?.type === "image") {
+    const caption = String(message?.image?.caption || "").trim();
+    return caption
+      ? `[El paciente ha enviado una foto por WhatsApp. Pie de foto: ${caption}]`
+      : "[El paciente ha enviado una foto por WhatsApp para su valoración.]";
+  }
+
+  return null;
+}
+
 function normalizeFlatPayload(body, receivedAt) {
   const events = [];
   const contact = body.contacts?.[0];
@@ -37,7 +53,7 @@ function normalizeFlatPayload(body, receivedAt) {
       contact_wa_id: message.from || contact?.wa_id || null,
       contact_name: contact?.profile?.name || null,
       message_type: message.type || null,
-      text_body: message.text?.body || null,
+      text_body: extractMessageText(message),
       status: null,
       ...extractReferral(message),
       raw: body,
@@ -85,7 +101,7 @@ function normalizeCloudApiChange(change, body, receivedAt) {
       contact_wa_id: waId,
       contact_name: contact?.profile?.name || null,
       message_type: message.type || null,
-      text_body: message.text?.body || null,
+      text_body: extractMessageText(message),
       status: null,
       ...extractReferral(message),
       raw: body,
