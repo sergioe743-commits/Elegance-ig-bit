@@ -10,7 +10,7 @@ const { findFormContext, buildFormContext } = require("./metaFormContext");
 
 const MAX_PER_CYCLE = 3;
 const MAX_DAILY_REPLIES_PER_CONTACT = 12;
-const MAX_MESSAGE_AGE_MS = 30 * 60 * 1000;
+const MAX_MESSAGE_AGE_MS = 12 * 60 * 60 * 1000;
 const HUMAN_LOCK_MS = 24 * 60 * 60 * 1000;
 const DUPLICATE_TEXT_WINDOW_MS = 2 * 60 * 1000;
 const processed = new Set();
@@ -314,7 +314,6 @@ async function processCycle() {
       processingContacts.add(event.contact_wa_id);
       handled += 1;
       try {
-        // Re-check after claiming in case a human/bot response arrived while this cycle was selecting work.
         if (hasReplyAfterInbound(event) || !isLatestInboundForContact(event)) {
           markClaim(event, "superseded");
           continue;
@@ -331,7 +330,6 @@ async function processCycle() {
           history,
         });
 
-        // Final guard: never send if a newer patient message or any reply appeared during GPT generation.
         if (hasReplyAfterInbound(event) || !isLatestInboundForContact(event)) {
           markClaim(event, "superseded");
           console.log(`[wabot] Respuesta descartada por turno mas reciente para ${event.contact_wa_id}.`);
@@ -374,7 +372,7 @@ function startWhatsAppBot() {
     processCycle().catch((err) => console.error("[wabot] Error de ciclo:", err.message));
   }, 15000);
   if (typeof timer.unref === "function") timer.unref();
-  console.log(`[wabot] Motor Meta Ads activo en modo ${botMode()} con deduplicacion fuerte por turno.`);
+  console.log(`[wabot] Motor Meta Ads activo en modo ${botMode()} con deduplicacion fuerte por turno y recuperacion de pendientes de hasta 12 horas.`);
   return timer;
 }
 
@@ -387,6 +385,7 @@ function status() {
     hasOpenAI: Boolean(process.env.OPENAI_API_KEY),
     hasWhatsAppApiKey: Boolean(process.env.WHATSAPP_360DIALOG_API_KEY),
     humanLockHours: HUMAN_LOCK_MS / 3600000,
+    maxMessageAgeHours: MAX_MESSAGE_AGE_MS / 3600000,
     maxDailyRepliesPerContact: MAX_DAILY_REPLIES_PER_CONTACT,
     duplicateTextWindowSeconds: DUPLICATE_TEXT_WINDOW_MS / 1000,
     strongTurnDeduplication: true,
