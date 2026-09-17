@@ -47,6 +47,20 @@ const EXCLUDED_USERNAMES_SET = new Set(
   EXCLUDED_USERNAMES.map((u) => u.toLowerCase())
 );
 
+// Instagram DMs are not a general personal assistant. Only clinic/training leads
+// or conversations already handled by the bot may receive automatic replies.
+// Ambiguous personal, supplier or collaboration conversations are left untouched.
+const IG_DM_CLINIC_INTENT = /\b(endolift(?:ing)?|endol[aá]ser|origen(?:\s+body|\s+lower\s+face)?|lipol[aá]ser|mela|papada|cuello|abdomen|brazos?|piernas?|flancos?|gl[uú]teos?|celulitis|flacidez|ojeras?|relleno|[aá]cido\s+hialur[oó]nico|radiesse|toxina|botox|tratamiento|valoraci[oó]n|consulta|cita|paciente|cl[ií]nica|precio|presupuesto\s+de\s+tratamiento|financiaci[oó]n|postoperatorio|recuperaci[oó]n|formaci[oó]n|curso|workshop|hands[- ]?on|one[- ]?to[- ]?one|m[eé]dico|doctora?|dr\.?\s*sergio|sergio\s+quintero)\b/i;
+const IG_DM_NON_CLINIC_INTENT = /\b(fot[oó]graf[oa]|fotograf[ií]a\s+profesional|sesi[oó]n\s+de\s+(?:fotos?|retrato)|retrato\s+(?:profesional|corporativo)|portfolio|community\s*manager|diseñador|proveedor|presupuesto\s+de\s+obra|arquitect[oa]|ingenier[oa]|aparejador|reforma|colaboraci[oó]n\s+comercial)\b/i;
+
+function shouldAutoReplyToInstagramDm({ text, history, hasReferral = false }) {
+  const value = String(text || "");
+  if (IG_DM_NON_CLINIC_INTENT.test(value)) return false;
+  if (hasReferral) return true;
+  if (Array.isArray(history) && history.length > 0) return true;
+  return IG_DM_CLINIC_INTENT.test(value);
+}
+
 const captionCache = new Map();
 async function getCachedMediaCaption(mediaId) {
   if (!mediaId) return undefined;
@@ -194,7 +208,7 @@ async function handleWebhookEvent(body) {
   }
 }
 
-async function processMessage({ senderId, text, messageId }) {
+async function processMessage({ senderId, text, messageId, hasReferral = false }) {
   if (!senderId || !text) return false;
   if (await isExcludedSender(senderId)) {
     const username = usernameCache.get(senderId);
@@ -202,9 +216,16 @@ async function processMessage({ senderId, text, messageId }) {
     return false;
   }
   if (messageId && alreadyProcessed(messageId)) return false;
-  if (messageId) markProcessed(messageId);
 
   const conversationKey = `dm:${senderId}`;
+  const history = getHistory(conversationKey);
+  if (!shouldAutoReplyToInstagramDm({ text, history, hasReferral })) {
+    console.log(`[dm] Ignorado (sin intención clínica/formativa confirmada, sender=${senderId}).`);
+    if (messageId) markProcessed(messageId);
+    return false;
+  }
+
+  if (messageId) markProcessed(messageId);
   if (needsHumanReview(text)) {
     console.log(`[dm] Escalado a revision humana (sender=${senderId}).`);
     await sendDirectMessage(senderId, ESCALATION_HOLDING_MESSAGE_PATIENT);
@@ -214,7 +235,6 @@ async function processMessage({ senderId, text, messageId }) {
   }
 
   const audience = detectAudience(text);
-  const history = getHistory(conversationKey);
   try {
     const reply = await generateReply({ text, audience, channel: "dm", history });
     await sendDirectMessage(senderId, reply);
@@ -276,7 +296,8 @@ async function handleMessagingEvent(event) {
   const text = [rawText, attachmentNote].filter(Boolean).join("\n");
   if (!senderId) return;
   const messageId = event.message?.mid || `${senderId}-${event.timestamp}`;
-  await processMessage({ senderId, text, messageId });
+  const hasReferral = Boolean(event.referral || event.message?.referral);
+  await processMessage({ senderId, text, messageId, hasReferral });
 }
 
 async function processComment({ commentId, text, fromId, fromUsername, mediaId }) {
