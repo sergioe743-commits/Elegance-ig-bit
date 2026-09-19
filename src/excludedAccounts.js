@@ -121,6 +121,7 @@ const EXCLUDED_USERNAMES = [
   "annabrow.es",
   "dra.mariagg",
   "mariammar",
+  "mariannmar",
   "jordina_sc",
   "mersanch__",
   "gildae",
