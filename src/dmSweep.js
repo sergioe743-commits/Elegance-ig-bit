@@ -84,10 +84,16 @@ function startDmSweep(processMessage) {
 
       revisadas++;
       try {
+        // Message Requests can be returned by the conversations edge even
+        // when their message id was seen/claimed by an earlier sweep or a
+        // failed send.  For the recovery sweep the source of truth is the
+        // conversation itself: if its latest message is still inbound, it is
+        // still unanswered. Do not let the webhook dedupe marker suppress it.
         const respondio = await processMessage({
           senderId,
           text: lastMessage.text,
-          messageId: lastMessage.id,
+          messageId: null,
+          recovery: true,
         });
         if (respondio) respondidas++;
       } catch (err) {
