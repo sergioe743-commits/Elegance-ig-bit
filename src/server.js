@@ -47,18 +47,26 @@ const EXCLUDED_USERNAMES_SET = new Set(
   EXCLUDED_USERNAMES.map((u) => u.toLowerCase())
 );
 
-// Instagram DMs are not a general personal assistant. Only clinic/training leads
-// or conversations already handled by the bot may receive automatic replies.
-// Ambiguous personal, supplier or collaboration conversations are left untouched.
-const IG_DM_CLINIC_INTENT = /\b(endolift(?:ing)?|endol[aá]ser|origen(?:\s+body|\s+lower\s+face)?|lipol[aá]ser|mela|papada|cuello|abdomen|brazos?|piernas?|flancos?|gl[uú]teos?|celulitis|flacidez|ojeras?|relleno|[aá]cido\s+hialur[oó]nico|radiesse|toxina|botox|tratamiento|valoraci[oó]n|consulta|cita|paciente|cl[ií]nica|precio|presupuesto\s+de\s+tratamiento|financiaci[oó]n|postoperatorio|recuperaci[oó]n|formaci[oó]n|curso|workshop|hands[- ]?on|one[- ]?to[- ]?one|m[eé]dico|doctora?|dr\.?\s*sergio|sergio\s+quintero)\b/i;
+// Instagram: every new inbound DM is a potential lead. Do not require the
+// patient to prove clinical intent before receiving a first reply. This is
+// especially important for Message Requests, greetings, phone numbers and
+// replies to stories/reels, where the clinical context may not be present in
+// the text returned by Meta.
+//
+// We keep only a narrow explicit block for clearly non-clinical supplier/
+// collaboration conversations. Once a conversation has already been handled
+// by the bot, do not block it later merely because a word overlaps this list.
 const IG_DM_NON_CLINIC_INTENT = /\b(fot[oó]graf[oa]|fotograf[ií]a\s+profesional|sesi[oó]n\s+de\s+(?:fotos?|retrato)|retrato\s+(?:profesional|corporativo)|portfolio|community\s*manager|diseñador|proveedor|presupuesto\s+de\s+obra|arquitect[oa]|ingenier[oa]|aparejador|reforma|colaboraci[oó]n\s+comercial)\b/i;
 
 function shouldAutoReplyToInstagramDm({ text, history, hasReferral = false }) {
-  const value = String(text || "");
-  if (IG_DM_NON_CLINIC_INTENT.test(value)) return false;
+  const value = String(text || "").trim();
+  if (!value) return false;
   if (hasReferral) return true;
   if (Array.isArray(history) && history.length > 0) return true;
-  return IG_DM_CLINIC_INTENT.test(value);
+  if (IG_DM_NON_CLINIC_INTENT.test(value)) return false;
+  // New inbound contacts are answered by default. The AI then identifies the
+  // intent from the message/context instead of silently discarding leads.
+  return true;
 }
 
 const captionCache = new Map();
@@ -257,8 +265,7 @@ function describeAttachments(event) {
     return "[La persona ha enviado fotos y/o video directamente por Instagram DM]";
   }
   if (hasVideo && !hasImage) {
-    return "[La persona ha enviado un video directamente por Instagram DM]";
-  }
+    return "[La persona ha enviado un video directamente por Instagram DM]";  }
   return "[La persona ha enviado una o varias fotos directamente por Instagram DM]";
 }
 
