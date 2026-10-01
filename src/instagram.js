@@ -49,6 +49,26 @@ access_token: getAccessToken(),
 return data;
 }
 /**
+* Envia una respuesta privada vinculada a un comentario de Instagram.
+* Meta permite una private reply al autor del comentario usando el comment_id
+* como recipient. Se usa para convertir comentarios de interes en un DM util.
+*/
+async function sendPrivateReplyToComment(commentId, messageText) {
+const igAccountId = process.env.IG_ACCOUNT_ID;
+if (!igAccountId) throw new Error("Falta IG_ACCOUNT_ID en el entorno.");
+
+const url = `${GRAPH_BASE}/${igAccountId}/messages`;
+const payload = {
+recipient: { comment_id: commentId },
+message: { text: messageText },
+};
+
+const { data } = await axios.post(url, payload, {
+params: { access_token: getAccessToken() },
+});
+return data;
+}
+/**
 * Obtiene el caption (texto) de una publicacion, para dar contexto a Claude
 * cuando responde a un comentario (p.ej. saber que la publicacion es sobre
 * "abdomen" cuando alguien comenta solo "¿cuanto cuesta?").
@@ -200,6 +220,7 @@ return null;
 module.exports = {
 sendDirectMessage,
 replyToComment,
+sendPrivateReplyToComment,
 getMediaCaption,
 getRecentMedia,
 getMediaComments,
