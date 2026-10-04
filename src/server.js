@@ -218,7 +218,7 @@ async function handleWebhookEvent(body) {
   }
 }
 
-async function processMessage({ senderId, text, messageId, hasReferral = false }) {
+async function processMessage({ senderId, text, messageId, hasReferral = false, imageUrls = [] }) {
   if (!senderId || !text) return false;
   if (await isExcludedSender(senderId)) {
     const username = usernameCache.get(senderId);
@@ -251,7 +251,7 @@ async function processMessage({ senderId, text, messageId, hasReferral = false }
 
   const audience = detectAudience(text);
   try {
-    const reply = await generateReply({ text, audience, channel: "dm", history });
+    const reply = await generateReply({ text, audience, channel: "dm", history, imageUrls });
     await sendDirectMessage(senderId, reply);
     appendTurn(conversationKey, text, reply);
     console.log(`[dm] Respondido (audience=${audience}, sender=${senderId}).`);
@@ -262,18 +262,39 @@ async function processMessage({ senderId, text, messageId, hasReferral = false }
   }
 }
 
-function describeAttachments(event) {
+function getAttachmentContext(event) {
   const attachments = event.message?.attachments;
-  if (!Array.isArray(attachments) || attachments.length === 0) return null;
-  const types = attachments.map((a) => a?.type).filter(Boolean);
+  if (!Array.isArray(attachments) || attachments.length === 0) {
+    return { note: null, imageUrls: [] };
+  }
+
+  const imageUrls = [];
+  const types = [];
+  for (const attachment of attachments) {
+    const type = attachment?.type;
+    if (type) types.push(type);
+    if (type === "image") {
+      const url =
+        attachment?.payload?.url ||
+        attachment?.payload?.src ||
+        attachment?.url ||
+        null;
+      if (url) imageUrls.push(url);
+    }
+  }
+
   const hasImage = types.includes("image");
   const hasVideo = types.includes("video");
+  let note = null;
   if (hasImage && hasVideo) {
-    return "[La persona ha enviado fotos y/o video directamente por Instagram DM]";
+    note = "[La persona ha enviado fotos y/o video directamente por Instagram DM. Analiza las imágenes disponibles junto con el contexto de la conversación.]";
+  } else if (hasVideo) {
+    note = "[La persona ha enviado un video directamente por Instagram DM]";
+  } else if (hasImage) {
+    note = "[La persona ha enviado una o varias fotos directamente por Instagram DM. Analiza visualmente la zona mostrada y responde usando también el contexto previo.]";
   }
-  if (hasVideo && !hasImage) {
-    return "[La persona ha enviado un video directamente por Instagram DM]";  }
-  return "[La persona ha enviado una o varias fotos directamente por Instagram DM]";
+
+  return { note, imageUrls };
 }
 
 function logInstagramDmEvent(event, { senderId }) {
@@ -310,13 +331,19 @@ async function handleMessagingEvent(event) {
     return;
   }
   const rawText = event.message?.text;
-  const attachmentNote = describeAttachments(event);
-  if (!rawText && !attachmentNote) return;
-  const text = [rawText, attachmentNote].filter(Boolean).join("\n");
+  const attachmentContext = getAttachmentContext(event);
+  if (!rawText && !attachmentContext.note) return;
+  const text = [rawText, attachmentContext.note].filter(Boolean).join("\n");
   if (!senderId) return;
   const messageId = event.message?.mid || `${senderId}-${event.timestamp}`;
   const hasReferral = Boolean(event.referral || event.message?.referral);
-  await processMessage({ senderId, text, messageId, hasReferral });
+  await processMessage({
+    senderId,
+    text,
+    messageId,
+    hasReferral,
+    imageUrls: attachmentContext.imageUrls,
+  });
 }
 
 async function processComment({ commentId, text, fromId, fromUsername, mediaId }) {
