@@ -20,6 +20,8 @@ const {
   markProcessed,
   getHistory,
   appendTurn,
+  markHumanTakeover,
+  isHumanTakeover,
 } = require("./store");
 const { startCommentSweep } = require("./commentSweep");
 const { startDmSweep } = require("./dmSweep");
@@ -226,6 +228,11 @@ async function processMessage({ senderId, text, messageId, hasReferral = false }
   if (messageId && alreadyProcessed(messageId)) return false;
 
   const conversationKey = `dm:${senderId}`;
+  if (isHumanTakeover(conversationKey)) {
+    console.log(`[dm] Ignorado: conversacion bajo control humano (sender=${senderId}).`);
+    if (messageId) markProcessed(messageId);
+    return false;
+  }
   const history = getHistory(conversationKey);
   if (!shouldAutoReplyToInstagramDm({ text, history, hasReferral })) {
     console.log(`[dm] Ignorado (sin intención clínica/formativa confirmada, sender=${senderId}).`);
@@ -296,7 +303,17 @@ function logInstagramDmEvent(event, { senderId }) {
 async function handleMessagingEvent(event) {
   const senderId = event.sender?.id;
   logInstagramDmEvent(event, { senderId });
-  if (event.message?.is_echo) return;
+  if (event.message?.is_echo) {
+    // Any manual outbound message from the Instagram account hands this
+    // conversation to the human team. The bot stays silent for the takeover
+    // window even if the patient replies again.
+    const recipientId = event.recipient?.id;
+    if (recipientId) {
+      markHumanTakeover(`dm:${recipientId}`);
+      console.log(`[dm] Control humano activado por mensaje manual (recipient=${recipientId}).`);
+    }
+    return;
+  }
   const rawText = event.message?.text;
   const attachmentNote = describeAttachments(event);
   if (!rawText && !attachmentNote) return;
