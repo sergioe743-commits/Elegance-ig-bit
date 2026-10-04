@@ -227,7 +227,7 @@ async function generateWithGPT(systemPrompt, messages) {
  * @param {Array<{role: "user"|"assistant", content: string}>} [params.history] - Turnos anteriores.
  * @returns {Promise<string>} Texto listo para publicar/enviar.
  */
-async function generateReply({ text, audience, channel, context, history = [] }) {
+async function generateReply({ text, audience, channel, context, history = [], imageUrls = [] }) {
   const systemPrompt = buildSystemPrompt({ audience, channel });
   const channelLabel = channel === "comment" ? "comentario publico" : channel === "whatsapp" ? "WhatsApp" : "DM";
 
@@ -250,7 +250,25 @@ async function generateReply({ text, audience, channel, context, history = [] })
     ? `Contexto adicional (no lo repitas literalmente):\n"""${context}"""\n\nMensaje recibido (${channelLabel}):\n"""${text}"""`
     : `Mensaje recibido (${channelLabel}):\n"""${text}"""`;
 
-  const messages = [...history, { role: "user", content: userContent }];
+  const validImageUrls = Array.isArray(imageUrls)
+    ? imageUrls.filter((url) => typeof url === "string" && /^https?:\/\//i.test(url))
+    : [];
+
+  const userMessage =
+    validImageUrls.length > 0
+      ? {
+          role: "user",
+          content: [
+            { type: "text", text: userContent },
+            ...validImageUrls.map((url) => ({
+              type: "image_url",
+              image_url: { url, detail: "high" },
+            })),
+          ],
+        }
+      : { role: "user", content: userContent };
+
+  const messages = [...history, userMessage];
   return generateWithGPT(systemPrompt, messages);
 }
 
