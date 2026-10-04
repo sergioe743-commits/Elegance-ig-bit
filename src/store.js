@@ -29,9 +29,10 @@ const parsed = JSON.parse(raw);
 return {
 processed: parsed.processed || {},
 conversations: parsed.conversations || {},
+humanTakeovers: parsed.humanTakeovers || {},
 };
 } catch {
-return { processed: {}, conversations: {} };
+return { processed: {}, conversations: {}, humanTakeovers: {} };
 }
 }
 
@@ -82,6 +83,34 @@ scheduleSave();
     return count;
   }
 
+
+const HUMAN_TAKEOVER_TTL_MS =
+(Number(process.env.HUMAN_TAKEOVER_TTL_HOURS) || 24) * 60 * 60 * 1000;
+
+function markHumanTakeover(key) {
+if (!key) return;
+state.humanTakeovers[key] = Date.now();
+scheduleSave();
+}
+
+function isHumanTakeover(key) {
+if (!key) return false;
+const ts = state.humanTakeovers[key];
+if (!ts) return false;
+if (Date.now() - ts > HUMAN_TAKEOVER_TTL_MS) {
+delete state.humanTakeovers[key];
+scheduleSave();
+return false;
+}
+return true;
+}
+
+function clearHumanTakeover(key) {
+if (!key) return;
+delete state.humanTakeovers[key];
+scheduleSave();
+}
+
 function getHistory(key) {
 const entry = state.conversations[key];
 if (!entry) return [];
@@ -116,6 +145,12 @@ delete state.processed[id];
 changed = true;
 }
 }
+for (const [key, ts] of Object.entries(state.humanTakeovers || {})) {
+if (now - ts > HUMAN_TAKEOVER_TTL_MS) {
+delete state.humanTakeovers[key];
+changed = true;
+}
+}
 for (const [key, entry] of Object.entries(state.conversations)) {
 if (now - entry.updatedAt > CONVERSATION_TTL_MS) {
 delete state.conversations[key];
@@ -125,4 +160,14 @@ changed = true;
 if (changed) scheduleSave();
 }, 60 * 60 * 1000).unref();
 
-module.exports = { alreadyProcessed, unmarkProcessed, markProcessed, clearProcessed, getHistory, appendTurn };
+module.exports = {
+alreadyProcessed,
+unmarkProcessed,
+markProcessed,
+clearProcessed,
+getHistory,
+appendTurn,
+markHumanTakeover,
+isHumanTakeover,
+clearHumanTakeover,
+};
