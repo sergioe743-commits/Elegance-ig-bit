@@ -304,14 +304,9 @@ async function handleMessagingEvent(event) {
   const senderId = event.sender?.id;
   logInstagramDmEvent(event, { senderId });
   if (event.message?.is_echo) {
-    // Any manual outbound message from the Instagram account hands this
-    // conversation to the human team. The bot stays silent for the takeover
-    // window even if the patient replies again.
-    const recipientId = event.recipient?.id;
-    if (recipientId) {
-      markHumanTakeover(`dm:${recipientId}`);
-      console.log(`[dm] Control humano activado por mensaje manual (recipient=${recipientId}).`);
-    }
+    // Meta also emits is_echo for messages sent by this bot through the API.
+    // Do not infer human takeover from is_echo alone: that silences legitimate
+    // patient follow-ups after every automatic response.
     return;
   }
   const rawText = event.message?.text;
