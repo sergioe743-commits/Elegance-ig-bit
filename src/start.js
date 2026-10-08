@@ -1,3 +1,11 @@
-// Emergency operational pause. No webhook server, DM/comment sweep or WhatsApp automation starts.
-// Restore the original bootstrap only after explicit authorization.
-console.log("[PAUSED] Elegance chatbot intentionally disabled pending explicit reactivation.");
+// Application bootstrap. Re-enabled on explicit user request.
+require("./server");
+const { startWhatsAppBot } = require("./whatsappBot");
+const { startLeadTracker } = require("./leadTracker");
+const { startTreatmentSync } = require("./treatmentSync");
+const { startInboxRecovery } = require("./inboxRecovery");
+
+startWhatsAppBot();
+startLeadTracker();
+startInboxRecovery();
+startTreatmentSync();
