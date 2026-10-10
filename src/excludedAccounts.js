@@ -12,6 +12,7 @@
 // minuscula y sin el "@" inicial.
 
 const EXCLUDED_USERNAMES = [
+  "omar_laspalmasmd",
   "elegancemedical_",
   "endoliftxchile",
   "drjenniferortiz",
