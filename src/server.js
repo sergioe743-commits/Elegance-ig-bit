@@ -218,7 +218,7 @@ async function handleWebhookEvent(body) {
   }
 }
 
-async function processMessage({ senderId, text, messageId, hasReferral = false, imageUrls = [] }) {
+async function processMessage({ senderId, text, messageId, hasReferral = false, imageUrls = [], context }) {
   if (!senderId || !text) return false;
   if (await isExcludedSender(senderId)) {
     const username = usernameCache.get(senderId);
@@ -251,7 +251,7 @@ async function processMessage({ senderId, text, messageId, hasReferral = false, 
 
   const audience = detectAudience(text);
   try {
-    const reply = await generateReply({ text, audience, channel: "dm", history, imageUrls });
+    const reply = await generateReply({ text, audience, channel: "dm", history, imageUrls, context });
     await sendDirectMessage(senderId, reply);
     appendTurn(conversationKey, text, reply);
     console.log(`[dm] Respondido (audience=${audience}, sender=${senderId}).`);
@@ -336,13 +336,23 @@ async function handleMessagingEvent(event) {
   const text = [rawText, attachmentContext.note].filter(Boolean).join("\n");
   if (!senderId) return;
   const messageId = event.message?.mid || `${senderId}-${event.timestamp}`;
-  const hasReferral = Boolean(event.referral || event.message?.referral);
+  const referral = event.referral || event.message?.referral;
+  const story = event.message?.reply_to?.story || event.message?.reply_to?.media || null;
+  const storyUrl = story?.url || story?.media_url || story?.image_url || null;
+  const referralMediaUrl = referral?.image_url || referral?.media_url || null;
+  const imageUrls = [...attachmentContext.imageUrls];
+  for (const url of [storyUrl, referralMediaUrl]) {
+    if (typeof url === "string" && /^https?:\/\//i.test(url) && !imageUrls.includes(url)) imageUrls.push(url);
+  }
+  const contextParts = [];
+  if (story || event.message?.reply_to?.story) contextParts.push("Este DM es una respuesta directa a una historia de Instagram. La pregunta se refiere al contenido de esa historia, no pidas otra captura.");
+  if (referral) contextParts.push("Contexto del anuncio/publicación de origen: " + [referral.headline, referral.body].filter(Boolean).join(" — "));
+  if (imageUrls.length) contextParts.push("Analiza la imagen adjunta para identificar el tratamiento o zona; si no es legible, no inventes detalles.");
   await processMessage({
-    senderId,
-    text,
-    messageId,
-    hasReferral,
-    imageUrls: attachmentContext.imageUrls,
+    senderId, text, messageId,
+    hasReferral: Boolean(referral),
+    imageUrls,
+    context: contextParts.join("\n") || undefined,
   });
 }
 
