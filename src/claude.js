@@ -414,19 +414,28 @@ async function generateReply({ text, audience, channel, context, history = [], i
     ? imageUrls.filter((url) => typeof url === "string" && /^https?:\/\//i.test(url))
     : [];
 
-  const userMessage =
-    validImageUrls.length > 0
-      ? {
-          role: "user",
-          content: [
-            { type: "text", text: userContent },
-            ...validImageUrls.map((url) => ({
-              type: "image_url",
-              image_url: { url, detail: "high" },
-            })),
-          ],
-        }
-      : { role: "user", content: userContent };
+  // Instagram CDN URLs can require authentication and yield 403 to OpenAI.
+  // Download server-side, then send image bytes as a data URI.
+  const imageParts = [];
+  for (const url of validImageUrls.slice(0, 3)) {
+    try {
+      const response = await axios.get(url, {
+        responseType: "arraybuffer",
+        timeout: 10000,
+        maxContentLength: 8 * 1024 * 1024,
+        headers: { "User-Agent": "EleganceMedical-InstagramBot/1.0" },
+      });
+      const type = String(response.headers["content-type"] || "").split(";")[0].toLowerCase();
+      if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(type)) continue;
+      const data = Buffer.from(response.data).toString("base64");
+      imageParts.push({ type: "image_url", image_url: { url: `data:${type};base64,${data}`, detail: "high" } });
+    } catch (error) {
+      console.warn("[vision] Instagram image download failed:", error.response?.status || error.message);
+    }
+  }
+  const userMessage = imageParts.length
+    ? { role: "user", content: [{ type: "text", text: userContent }, ...imageParts] }
+    : { role: "user", content: userContent };
 
   const messages = [...history, userMessage];
   return generateWithGPT(systemPrompt, messages);
