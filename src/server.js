@@ -384,7 +384,7 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
   const history = getHistory(conversationKey);
   const context = await getCachedMediaCaption(mediaId);
   const isLegsPost = /piernas|flacidez.*pierna|pierna.*flacidez/i.test(context || "");
-  const wantsInfo = /^(?:piernas?|informaci[oó]n|info|precio|precios|cu[aá]nto|cuanto|cu[aá]nto cuesta|how much|price|me interesa|quiero informaci[oó]n)[\s!?.,]*$/i.test(String(text).trim());
+  const wantsInfo = /\b(piernas?|informaci[oó]n|info|precios?|cu[aá]nto|coste|cuesta|how much|price|interesad[ao]|me interesa|quiero saber|details)\b/i.test(String(text));
   if (isLegsPost && wantsInfo && audience !== "doctor") {
     const privateText = "¡Hola! Gracias por tu interés en ORIGEN BODY™ para piernas, nuestro protocolo personalizado desarrollado por el Dr. Sergio Quintero. Según la zona y las necesidades, combinamos técnicas como lipoláser y endolifting para trabajar grasa localizada y favorecer la retracción de la piel. Para zonas concretas como la cara interna del muslo o cartucheras, el precio orientativo es de 2.000 €; el pack de pierna completa (de cintura a zona alta de rodilla, por delante y detrás) es de 4.000 €. La indicación y el presupuesto definitivo dependen de valoración médica. Puedes solicitar orientación inicial online mediante fotos o consulta presencial en Barcelona. Nuestro equipo te atiende aquí: https://wa.me/34633248646";
     try {
