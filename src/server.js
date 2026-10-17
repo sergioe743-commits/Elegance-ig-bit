@@ -11,6 +11,7 @@ const { generateReply } = require("./claude");
 const {
   sendDirectMessage,
   replyToComment,
+  sendPrivateReplyToComment,
   getMediaCaption,
   getUserProfile,
 } = require("./instagram");
@@ -382,6 +383,27 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
   const audience = detectAudience(text);
   const history = getHistory(conversationKey);
   const context = await getCachedMediaCaption(mediaId);
+  const isLegsPost = /piernas|flacidez.*pierna|pierna.*flacidez/i.test(context || "");
+  const wantsInfo = /^(?:piernas?|informaci[oó]n|info|precio|precios|cu[aá]nto|cuanto|cu[aá]nto cuesta|how much|price|me interesa|quiero informaci[oó]n)[\s!?.,]*$/i.test(String(text).trim());
+  if (isLegsPost && wantsInfo && audience !== "doctor") {
+    const privateText = "¡Hola! Gracias por tu interés en ORIGEN BODY™ para piernas, nuestro protocolo personalizado desarrollado por el Dr. Sergio Quintero. Según la zona y las necesidades, combinamos técnicas como lipoláser y endolifting para trabajar grasa localizada y favorecer la retracción de la piel. Para zonas concretas como la cara interna del muslo o cartucheras, el precio orientativo es de 2.000 €; el pack de pierna completa (de cintura a zona alta de rodilla, por delante y detrás) es de 4.000 €. La indicación y el presupuesto definitivo dependen de valoración médica. Puedes solicitar orientación inicial online mediante fotos o consulta presencial en Barcelona. Nuestro equipo te atiende aquí: https://wa.me/34633248646";
+    try {
+      await sendPrivateReplyToComment(commentId, privateText);
+      console.log(`[comment] Private reply enviada (comment=${commentId}).`);
+      try {
+        await replyToComment(commentId, "¡Gracias por tu interés! Te hemos enviado por privado la información sobre ORIGEN BODY™ para piernas y los precios orientativos.");
+      } catch (publicErr) {
+        console.warn("[comment] Private reply enviada, fallo respuesta publica:", describeError(publicErr));
+      }
+      appendTurn(conversationKey, text, privateText);
+      return true;
+    } catch (privateErr) {
+      console.error("[comment] No se pudo enviar respuesta privada:", describeError(privateErr));
+      // No afirmes que se ha enviado un DM si Meta no confirma su entrega.
+      unmarkProcessed(commentId);
+      return false;
+    }
+  }
   try {
     const reply = await generateReply({
       text,
