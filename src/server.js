@@ -383,23 +383,26 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
   const audience = detectAudience(text);
   const history = getHistory(conversationKey);
   const context = await getCachedMediaCaption(mediaId);
-  const isLegsPost = /piernas|flacidez.*pierna|pierna.*flacidez/i.test(context || "");
-  const wantsInfo = /\b(piernas?|informaci[oó]n|info|precios?|cu[aá]nto|coste|cuesta|how much|price|interesad[ao]|me interesa|quiero saber|details)\b/i.test(String(text));
-  if (isLegsPost && wantsInfo && audience !== "doctor") {
-    const privateText = "¡Hola! Gracias por tu interés en ORIGEN BODY™ para piernas, nuestro protocolo personalizado desarrollado por el Dr. Sergio Quintero. Según la zona y las necesidades, combinamos técnicas como lipoláser y endolifting para trabajar grasa localizada y favorecer la retracción de la piel. Para zonas concretas como la cara interna del muslo o cartucheras, el precio orientativo es de 2.000 €; el pack de pierna completa (de cintura a zona alta de rodilla, por delante y detrás) es de 4.000 €. La indicación y el presupuesto definitivo dependen de valoración médica. Puedes solicitar orientación inicial online mediante fotos o consulta presencial en Barcelona. Nuestro equipo te atiende aquí: https://wa.me/34633248646";
+  // For any clinical publication, use its caption to contextualize lead comments.
+  const wantsInfo = /\b(piernas?|papada|cuello|abdomen|brazos?|celulitis|gl[uú]teos?|flacidez|informaci[oó]n|info|precios?|cu[aá]nto|coste|cuesta|how much|price|interesad[ao]|me interesa|quiero saber|details)\b/i.test(String(text));
+  const clinicalPost = /\b(ORIGEN|endolift|endol[aá]ser|lipol[aá]ser|papada|abdomen|piernas?|brazos?|celulitis|gl[uú]teos?|flacidez|tratamiento|l[aá]ser|rejuvenecimiento)\b/i.test(context || "");
+  if (clinicalPost && wantsInfo && audience !== "doctor") {
     try {
+      const privateText = await generateReply({
+        text: `La persona ha comentado "${text}" en una publicación clínica y solicita información. Redacta un mensaje PRIVADO dirigido al paciente. Explica el tratamiento exacto del caption, su propuesta de valor y las técnicas que se combinan según indicación, el precio orientativo de la zona según el tarifario vigente (EUR Barcelona; MXN México si el caption trata de México), que el precio final depende de valoración médica, y termina con el WhatsApp correcto. No asumas que una zona amplia implica pack completo. No preguntes nada ni pidas capturas. No digas que has enviado archivos.`,
+        audience: "patient", channel: "dm", context,
+      });
       await sendPrivateReplyToComment(commentId, privateText);
       console.log(`[comment] Private reply enviada (comment=${commentId}).`);
       try {
-        await replyToComment(commentId, "¡Gracias por tu interés! Te hemos enviado por privado la información sobre ORIGEN BODY™ para piernas y los precios orientativos.");
+        await replyToComment(commentId, "¡Gracias por tu interés! Te hemos enviado por privado la información y los precios orientativos.");
       } catch (publicErr) {
         console.warn("[comment] Private reply enviada, fallo respuesta publica:", describeError(publicErr));
       }
       appendTurn(conversationKey, text, privateText);
       return true;
     } catch (privateErr) {
-      console.error("[comment] No se pudo enviar respuesta privada:", describeError(privateErr));
-      // No afirmes que se ha enviado un DM si Meta no confirma su entrega.
+      console.error("[comment] Fallo respuesta privada:", describeError(privateErr));
       unmarkProcessed(commentId);
       return false;
     }
