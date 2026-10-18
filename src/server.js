@@ -383,26 +383,30 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
   const audience = detectAudience(text);
   const history = getHistory(conversationKey);
   const context = await getCachedMediaCaption(mediaId);
-  // For any clinical publication, use its caption to contextualize lead comments.
-  const wantsInfo = /\b(piernas?|papada|cuello|abdomen|brazos?|celulitis|gl[uú]teos?|flacidez|informaci[oó]n|info|precios?|cu[aá]nto|coste|cuesta|how much|price|interesad[ao]|me interesa|quiero saber|details)\b/i.test(String(text));
-  const clinicalPost = /\b(ORIGEN|endolift|endol[aá]ser|lipol[aá]ser|papada|abdomen|piernas?|brazos?|celulitis|gl[uú]teos?|flacidez|tratamiento|l[aá]ser|rejuvenecimiento)\b/i.test(context || "");
-  if (clinicalPost && wantsInfo && audience !== "doctor") {
+  // New commercial comments: public engagement plus one contextual private reply.
+  const wantsInfo = /\b(piernas?|papada|cuello|abdomen|brazos?|celulitis|gl[uú]teos?|flacidez|informaci[oó]n|info|precios?|cu[aá]nto|coste|cuesta|how much|price|interesad[ao]|me interesa|quiero saber|details|curso|formaci[oó]n|masterclass|workshop|hands.on)\b/i.test(String(text));
+  const clinicalPost = /\b(ORIGEN|endolift|endol[aá]ser|lipol[aá]ser|papada|abdomen|piernas?|brazos?|celulitis|gl[uú]teos?|flacidez|tratamiento|l[aá]ser|rejuvenecimiento|masterclass|workshop|formaci[oó]n|hands.on)\b/i.test(context || "");
+  const trainingPost = /\b(masterclass|workshop|formaci[oó]n|hands.on|curso para m[eé]dicos)\b/i.test(context || "");
+  if (clinicalPost && wantsInfo) {
     try {
       const privateText = await generateReply({
-        text: `La persona ha comentado "${text}" en una publicación clínica y solicita información. Redacta un mensaje PRIVADO dirigido al paciente. Explica el tratamiento exacto del caption, su propuesta de valor y las técnicas que se combinan según indicación, el precio orientativo de la zona según el tarifario vigente (EUR Barcelona; MXN México si el caption trata de México), que el precio final depende de valoración médica, y termina con el WhatsApp correcto. No asumas que una zona amplia implica pack completo. No preguntes nada ni pidas capturas. No digas que has enviado archivos.`,
-        audience: "patient", channel: "dm", context,
+        text: `El usuario comentó "${text}" y solicita información por privado sobre la publicación. Usa EXCLUSIVAMENTE el tema del caption para identificar si se trata de formación médica o tratamiento. Si es una masterclass, explica programa, fechas y precios vigentes de la formación y facilita WhatsApp de formación; si es tratamiento, explica propuesta de valor ORIGEN™, técnicas aplicables, precio orientativo de la zona según tarifario y WhatsApp adecuado. No confundas formación con tratamiento. No preguntes datos personales ni prometas disponibilidad.`,
+        audience: trainingPost ? "doctor" : "patient",
+        channel: "dm", context,
       });
-      await sendPrivateReplyToComment(commentId, privateText);
-      console.log(`[comment] Private reply enviada (comment=${commentId}).`);
+      // First create visible engagement, then send the private information.
+      await replyToComment(commentId, "¡Gracias por tu interés! Te compartimos también por privado los detalles sobre esta publicación.");
       try {
-        await replyToComment(commentId, "¡Gracias por tu interés! Te hemos enviado por privado la información y los precios orientativos.");
-      } catch (publicErr) {
-        console.warn("[comment] Private reply enviada, fallo respuesta publica:", describeError(publicErr));
+        await sendPrivateReplyToComment(commentId, privateText);
+        console.log(`[comment] Respuesta publica y privada enviadas (comment=${commentId}).`);
+      } catch (privateErr) {
+        // Never retry the entire public+private pair: doing so duplicates public comments.
+        console.error("[comment] Respuesta publica enviada; fallo DM privado:", describeError(privateErr));
       }
       appendTurn(conversationKey, text, privateText);
       return true;
-    } catch (privateErr) {
-      console.error("[comment] Fallo respuesta privada:", describeError(privateErr));
+    } catch (err) {
+      console.error("[comment] Fallo al preparar respuesta contextual:", describeError(err));
       unmarkProcessed(commentId);
       return false;
     }
