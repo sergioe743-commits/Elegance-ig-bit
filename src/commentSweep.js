@@ -24,7 +24,7 @@ const SWEEP_INTERVAL_MS =
   (Number(process.env.COMMENT_SWEEP_MINUTES) || 5) * 60 * 1000;
 const LOOKBACK_MS =
   (Number(process.env.COMMENT_SWEEP_LOOKBACK_MINUTES) || 30) * 60 * 1000;
-const MEDIA_LIMIT = Number(process.env.COMMENT_SWEEP_MEDIA_LIMIT) || 10;
+const MEDIA_LIMIT = Math.max(500, Number(process.env.COMMENT_SWEEP_MEDIA_LIMIT) || 500);
 const FIRST_RUN_DELAY_MS = 30 * 1000; // deja arrancar el servidor primero
 
 function describeError(err) {
