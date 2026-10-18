@@ -92,16 +92,16 @@ return data.caption || "";
 async function getRecentMedia(limit = 10) {
 const igAccountId = process.env.IG_ACCOUNT_ID;
 if (!igAccountId) throw new Error("Falta IG_ACCOUNT_ID en el entorno.");
-
-const url = `${GRAPH_BASE}/${igAccountId}/media`;
-const { data } = await axios.get(url, {
-params: {
-fields: "id,caption,timestamp",
-limit,
-access_token: getAccessToken(),
-},
-});
-return data.data || [];
+const items = [];
+let url = `${GRAPH_BASE}/${igAccountId}/media`;
+let params = { fields: "id,caption,timestamp", limit: Math.min(100, Math.max(1, limit)), access_token: getAccessToken() };
+while (url && items.length < limit) {
+  const { data } = await axios.get(url, { params, timeout: 20000 });
+  items.push(...(data.data || []));
+  url = data.paging?.next || null;
+  params = undefined;
+}
+return items.slice(0, limit);
 }
 /**
 * Lista los comentarios de una publicacion, incluyendo sus respuestas (para
