@@ -380,6 +380,13 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
     return true;
   }
 
+  // Anti-loop: only explicit commercial requests may receive automated public replies.
+  // General discussion, complaints, privacy and nested conversational replies go to humans.
+  const commercialIntent = /\\b(precio|precios|informaci[oó]n|info|cu[aá]nto|coste|cuesta|how much|price|piernas?|papada|abdomen|brazos?|celulitis|masterclass|workshop|formaci[oó]n|curso|quiero saber|me interesa)\\b/i.test(text);
+  if (!commercialIntent) {
+    console.log(`[comment] Ignorado por seguridad (sin intención comercial explícita): ${commentId}`);
+    return false;
+  }
   const audience = detectAudience(text);
   const history = getHistory(conversationKey);
   const context = await getCachedMediaCaption(mediaId);
@@ -411,22 +418,9 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
       return false;
     }
   }
-  try {
-    const reply = await generateReply({
-      text,
-      audience,
-      channel: "comment",
-      history,
-      context,
-    });
-    await replyToComment(commentId, reply);
-    appendTurn(conversationKey, text, reply);
-    console.log(`[comment] Respondido (audience=${audience}, comment=${commentId}).`);
-    return true;
-  } catch (err) {
-    unmarkProcessed(commentId);
-    throw err;
-  }
+  // Never generate open-ended public comment replies: prevents recursive threads.
+  console.log(`[comment] Sin publicación clínica identificada; respuesta automática omitida: ${commentId}`);
+  return false;
 }
 
 async function handleCommentEvent(value) {
