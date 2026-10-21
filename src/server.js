@@ -382,7 +382,7 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
 
   // Anti-loop: only explicit commercial requests may receive automated public replies.
   // General discussion, complaints, privacy and nested conversational replies go to humans.
-  const commercialIntent = /\\b(precio|precios|informaci[oó]n|info|cu[aá]nto|coste|cuesta|how much|price|piernas?|papada|abdomen|brazos?|celulitis|masterclass|workshop|formaci[oó]n|curso|quiero saber|me interesa)\\b/i.test(text);
+  const commercialIntent = /\b(precio|precios|informaci[oó]n|info|cu[aá]nto|coste|cuesta|how much|price|piernas?|papada|abdomen|brazos?|celulitis|masterclass|workshop|formaci[oó]n|curso|quiero saber|me interesa)\b/i.test(text);
   if (!commercialIntent) {
     console.log(`[comment] Ignorado por seguridad (sin intención comercial explícita): ${commentId}`);
     return false;
