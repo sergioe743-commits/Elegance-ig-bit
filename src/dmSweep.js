@@ -92,7 +92,7 @@ function startDmSweep(processMessage) {
         const respondio = await processMessage({
           senderId,
           text: lastMessage.text,
-          messageId: null,
+          messageId: lastMessage.id || null,
           recovery: true,
         });
         if (respondio) respondidas++;
