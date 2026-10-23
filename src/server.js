@@ -435,6 +435,11 @@ async function handleCommentEvent(value) {
   const fromId = value.from?.id;
   const fromUsername = value.from?.username;
   const mediaId = value.media?.id;
+  // Only process top-level comments; never respond inside an existing reply thread.
+  if (value.parent_id || value.parentId) {
+    console.log(`[comment] Ignorada respuesta anidada: ${commentId}`);
+    return;
+  }
   if (!commentId || !text) return;
   await processComment({ commentId, text, fromId, fromUsername, mediaId });
 }
