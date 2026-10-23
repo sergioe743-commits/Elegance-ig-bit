@@ -359,6 +359,12 @@ async function handleMessagingEvent(event) {
 
 async function processComment({ commentId, text, fromId, fromUsername, mediaId }) {
   if (!commentId || !text) return false;
+  // Never respond to complaints or requests to stop, even if they mention treatment keywords.
+  if (/deja (ya )?de (contestar|responder)|no (me |nos )?(contestes|respondas)|bloquear|notificaciones|parec[eé]is bots|sois bots|cada d[ií]a|qu[eé] pesado|spam|privacidad|confidencialidad|etiquet|perfil de (la |el |una |un )?paciente/i.test(text)) {
+    markProcessed(commentId);
+    console.log(`[comment] Silenciado por queja/privacidad: ${commentId}`);
+    return false;
+  }
   if (fromId && process.env.IG_ACCOUNT_ID && fromId === process.env.IG_ACCOUNT_ID) {
     return false;
   }
