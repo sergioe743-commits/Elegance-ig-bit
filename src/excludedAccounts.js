@@ -12,6 +12,7 @@
 // minuscula y sin el "@" inicial.
 
 const EXCLUDED_USERNAMES = [
+  "marianmar", // Amiga: no responder con IA (2026-10-27)
   "omar_laspalmasmd",
   "elegancemedical_",
   "endoliftxchile",
