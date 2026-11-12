@@ -346,9 +346,22 @@ async function handleMessagingEvent(event) {
     if (typeof url === "string" && /^https?:\/\//i.test(url) && !imageUrls.includes(url)) imageUrls.push(url);
   }
   const contextParts = [];
-  if (story || event.message?.reply_to?.story) contextParts.push("Este DM es una respuesta directa a una historia de Instagram. La pregunta se refiere al contenido de esa historia, no pidas otra captura.");
+  const sharedMedia = event.message?.reply_to || {};
+  const mediaId = [sharedMedia.media?.id, sharedMedia.story?.id, referral?.media_id, referral?.post_id, referral?.media?.id]
+    .find(value => typeof value === "string" && /^\\d+$/.test(value));
+  if (mediaId) {
+    const caption = await getCachedMediaCaption(mediaId);
+    if (caption) contextParts.push("Descripción de la publicación compartida (fuente prioritaria para identificar zona y tratamiento): " + caption.slice(0, 2200));
+  }
+  const attachmentMedia = event.message?.attachments || [];
+  const attachmentUrls = attachmentMedia.map(a => a?.payload?.url || "").filter(Boolean);
+  if (story || event.message?.reply_to?.story) contextParts.push("Este DM responde a una historia o publicación compartida. Utiliza su descripción y el contenido disponible antes de preguntar.");
   if (referral) contextParts.push("Contexto del anuncio/publicación de origen: " + [referral.headline, referral.body].filter(Boolean).join(" — "));
+  if (attachmentUrls.length && attachmentMedia.some(a => a?.type === "share")) contextParts.push("La persona compartió una publicación/reel; no presupongas que la zona es desconocida sin revisar el contexto.");
   if (imageUrls.length) contextParts.push("Analiza la imagen adjunta para identificar el tratamiento o zona; si no es legible, no inventes detalles.");
+  if (/\\b(precio|cu[aá]nto|cuesta|coste|informaci[oó]n)\\b/i.test(rawText || "") && (story || referral || attachmentMedia.length)) {
+    contextParts.push("Consulta comercial sobre la publicación compartida: si se identifica zona/tratamiento, responde directamente con explicación breve, precio orientativo y WhatsApp de clínica. No preguntes otra vez qué tratamiento o zona se muestra. Si el contexto no permite identificarlo con seguridad, ofrece el WhatsApp para valoración sin inventar un precio.");
+  }
   await processMessage({
     senderId, text, messageId,
     hasReferral: Boolean(referral),
