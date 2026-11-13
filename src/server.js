@@ -400,9 +400,9 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
   }
 
   // Solo solicitudes explícitas: mencionar una zona no equivale a pedir información.
-  const commercialIntent = /(?:\\b(?:informaci[oó]n|info|precios?|cu[aá]nto|cuesta|coste|precio|how much|price|details|detalles|presupuesto|cita|valoraci[oó]n|masterclass|workshop|formaci[oó]n)\\b|(?:qu[eé]|q)\\s+tratamiento|(?:me interesa|quiero saber|quisiera informaci[oó]n|d[oó]nde est[aá]n|d[oó]nde est[aá]is|cu[aá]nto duran|cu[aá]nto dura))/i.test(text);
+  const commercialIntent = /(?:\b(?:informaci[oó]n|info|precios?|cu[aá]nto|cuesta|coste|precio|how much|price|details|detalles|presupuesto|cita|valoraci[oó]n|masterclass|workshop|formaci[oó]n)\b|(?:qu[eé]|q)\s+tratamiento|(?:me interesa|quiero saber|quisiera informaci[oó]n|d[oó]nde est[aá]n|d[oó]nde est[aá]is|cu[aá]nto duran|cu[aá]nto dura))/i.test(text);
   const nonCommercialOpinion = /(?:no se ha|no se han|no porque|deporte|cosm[eé]tica|mentira|estafa|enga[nñ]o|no funciona|no sirve|qu[eé] horror|de co[nñ]a)/i.test(text);
-  if (!commercialIntent || (nonCommercialOpinion && !/\\b(?:precio|informaci[oó]n|cu[aá]nto|tratamiento|presupuesto)\\b/i.test(text))) {
+  if (!commercialIntent || (nonCommercialOpinion && !/\b(?:precio|informaci[oó]n|cu[aá]nto|tratamiento|presupuesto)\b/i.test(text))) {
     console.log(`[comment] Sin solicitud comercial; no responder: ${commentId}`);
     return false;
   }
@@ -425,7 +425,7 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
         ? "La duración de los resultados depende de la zona, la piel y la evolución individual. Te ampliamos la información por privado."
         : /(?:d[oó]nde est[aá]n|d[oó]nde est[aá]is|ubicaci[oó]n)/i.test(text)
           ? "Atendemos en Barcelona. Te enviamos los detalles del tratamiento y la valoración por privado."
-          : /(?:qu[eé]|q)\\s+tratamiento/i.test(text)
+          : /(?:qu[eé]|q)\s+tratamiento/i.test(text)
             ? "Es un protocolo ORIGEN™ personalizado según la zona y las necesidades del paciente. Te explicamos los detalles por privado."
             : "Gracias por tu consulta. Te enviamos información sobre el tratamiento y su precio orientativo por privado.";
       await replyToComment(commentId, publicReply);
