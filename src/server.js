@@ -399,18 +399,18 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
     return true;
   }
 
-  // Anti-loop: only explicit commercial requests may receive automated public replies.
-  // General discussion, complaints, privacy and nested conversational replies go to humans.
-  const commercialIntent = /\b(precio|precios|informaci[oó]n|info|cu[aá]nto|coste|cuesta|how much|price|piernas?|papada|abdomen|brazos?|celulitis|masterclass|workshop|formaci[oó]n|curso|quiero saber|me interesa)\b/i.test(text);
-  if (!commercialIntent) {
-    console.log(`[comment] Ignorado por seguridad (sin intención comercial explícita): ${commentId}`);
+  // Solo solicitudes explícitas: mencionar una zona no equivale a pedir información.
+  const commercialIntent = /(?:\\b(?:informaci[oó]n|info|precios?|cu[aá]nto|cuesta|coste|precio|how much|price|details|detalles|presupuesto|cita|valoraci[oó]n|masterclass|workshop|formaci[oó]n)\\b|(?:qu[eé]|q)\\s+tratamiento|(?:me interesa|quiero saber|quisiera informaci[oó]n|d[oó]nde est[aá]n|d[oó]nde est[aá]is|cu[aá]nto duran|cu[aá]nto dura))/i.test(text);
+  const nonCommercialOpinion = /(?:no se ha|no se han|no porque|deporte|cosm[eé]tica|mentira|estafa|enga[nñ]o|no funciona|no sirve|qu[eé] horror|de co[nñ]a)/i.test(text);
+  if (!commercialIntent || (nonCommercialOpinion && !/\\b(?:precio|informaci[oó]n|cu[aá]nto|tratamiento|presupuesto)\\b/i.test(text))) {
+    console.log(`[comment] Sin solicitud comercial; no responder: ${commentId}`);
     return false;
   }
   const audience = detectAudience(text);
   const history = getHistory(conversationKey);
   const context = await getCachedMediaCaption(mediaId);
   // New commercial comments: public engagement plus one contextual private reply.
-  const wantsInfo = /\b(piernas?|papada|cuello|abdomen|brazos?|celulitis|gl[uú]teos?|flacidez|informaci[oó]n|info|precios?|cu[aá]nto|coste|cuesta|how much|price|interesad[ao]|me interesa|quiero saber|details|curso|formaci[oó]n|masterclass|workshop|hands.on)\b/i.test(String(text));
+  const wantsInfo = commercialIntent;
   const clinicalPost = /\b(ORIGEN|endolift|endol[aá]ser|lipol[aá]ser|papada|abdomen|piernas?|brazos?|celulitis|gl[uú]teos?|flacidez|tratamiento|l[aá]ser|rejuvenecimiento|masterclass|workshop|formaci[oó]n|hands.on)\b/i.test(context || "");
   const trainingPost = /\b(masterclass|workshop|formaci[oó]n|hands.on|curso para m[eé]dicos)\b/i.test(context || "");
   if (clinicalPost && wantsInfo) {
@@ -421,7 +421,14 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
         channel: "dm", context,
       });
       // First create visible engagement, then send the private information.
-      await replyToComment(commentId, "¡Gracias por tu interés! Te compartimos también por privado los detalles sobre esta publicación.");
+      const publicReply = /(?:cu[aá]nto duran|cu[aá]nto dura|duraci[oó]n)/i.test(text)
+        ? "La duración de los resultados depende de la zona, la piel y la evolución individual. Te ampliamos la información por privado."
+        : /(?:d[oó]nde est[aá]n|d[oó]nde est[aá]is|ubicaci[oó]n)/i.test(text)
+          ? "Atendemos en Barcelona. Te enviamos los detalles del tratamiento y la valoración por privado."
+          : /(?:qu[eé]|q)\\s+tratamiento/i.test(text)
+            ? "Es un protocolo ORIGEN™ personalizado según la zona y las necesidades del paciente. Te explicamos los detalles por privado."
+            : "Gracias por tu consulta. Te enviamos información sobre el tratamiento y su precio orientativo por privado.";
+      await replyToComment(commentId, publicReply);
       try {
         await sendPrivateReplyToComment(commentId, privateText);
         console.log(`[comment] Respuesta publica y privada enviadas (comment=${commentId}).`);
