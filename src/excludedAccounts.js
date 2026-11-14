@@ -12,6 +12,7 @@
 // minuscula y sin el "@" inicial.
 
 const EXCLUDED_USERNAMES = [
+  "clavededoc", // Contacto personal: IA desactivada (2026-11-14)
   "dra.marianagarciag", // Contacto personal: excluir de respuestas automaticas
   "marianmar", // Amiga: no responder con IA (2026-10-27)
   "omar_laspalmasmd",
