@@ -399,72 +399,50 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
     return true;
   }
 
-  // Solo solicitudes explícitas: mencionar una zona no equivale a pedir información.
-  const commercialIntent = /(?:\b(?:informaci[oó]n|info|precios?|cu[aá]nto|cuesta|coste|precio|how much|price|details|detalles|presupuesto|cita|valoraci[oó]n|masterclass|workshop|formaci[oó]n)\b|(?:qu[eé]|q)\s+tratamiento|(?:me interesa|me puedes informar|puedes informarme|podr[ií]as informarme|quisiera saber|quiero saber|quisiera informaci[oó]n|d[oó]nde est[aá]n|d[oó]nde est[aá]is|cu[aá]nto duran|cu[aá]nto dura))/i.test(text);
-  const nonCommercialOpinion = /(?:no se ha|no se han|no porque|deporte|cosm[eé]tica|mentira|estafa|enga[nñ]o|no funciona|no sirve|qu[eé] horror|de co[nñ]a)/i.test(text);
-  if (!commercialIntent || (nonCommercialOpinion && !/\b(?:precio|informaci[oó]n|cu[aá]nto|tratamiento|presupuesto)\b/i.test(text))) {
-    console.log(`[comment] Sin solicitud comercial; no responder: ${commentId}`);
-    return false;
-  }
+
   const audience = detectAudience(text);
   const history = getHistory(conversationKey);
   const context = await getCachedMediaCaption(mediaId);
-  // New commercial comments: public engagement plus one contextual private reply.
-  const wantsInfo = commercialIntent;
-  const clinicalPost = /\b(ORIGEN|endolift|endol[aá]ser|lipol[aá]ser|papada|abdomen|piernas?|brazos?|celulitis|gl[uú]teos?|flacidez|tratamiento|l[aá]ser|rejuvenecimiento|masterclass|workshop|formaci[oó]n|hands.on)\b/i.test(context || "");
-  const trainingPost = /\b(masterclass|workshop|formaci[oó]n|hands.on|curso para m[eé]dicos)\b/i.test(context || "");
-  if (clinicalPost && wantsInfo) {
-    try {
-      const privateText = await generateReply({
-        text: `El usuario comentó "${text}" y solicita información por privado sobre la publicación. Usa EXCLUSIVAMENTE el tema del caption para identificar si se trata de formación médica o tratamiento. Si es una masterclass, explica programa, fechas y precios vigentes de la formación y facilita WhatsApp de formación; si es tratamiento, explica propuesta de valor ORIGEN™, técnicas aplicables, precio orientativo de la zona según tarifario y WhatsApp adecuado. No confundas formación con tratamiento. No preguntes datos personales ni prometas disponibilidad.`,
-        audience: trainingPost ? "doctor" : "patient",
-        channel: "dm", context,
-      });
-      // First create visible engagement, then send the private information.
-      const publicReply = /(?:cu[aá]nto duran|cu[aá]nto dura|duraci[oó]n)/i.test(text)
-        ? "La duración de los resultados depende de la zona, la piel y la evolución individual. Te ampliamos la información por privado."
-        : /(?:d[oó]nde est[aá]n|d[oó]nde est[aá]is|ubicaci[oó]n)/i.test(text)
-          ? "Atendemos en Barcelona. Te enviamos los detalles del tratamiento y la valoración por privado."
-          : /(?:qu[eé]|q)\s+tratamiento/i.test(text)
-            ? "Es un protocolo ORIGEN™ personalizado según la zona y las necesidades del paciente. Te explicamos los detalles por privado."
-            : "Gracias por tu consulta. Te enviamos información sobre el tratamiento y su precio orientativo por privado.";
-      await replyToComment(commentId, publicReply);
+  const commercialIntent = /(?:informaci[oó]n|\\binfo\\b|precios?|cu[aá]nto|cuesta|coste|how much|price|presupuesto|cita|valoraci[oó]n|me interesa|me puedes informar|puedes informarme|quiero saber|quisiera saber|qu[eé] tratamiento|q tratamiento|d[oó]nde est[aá]n|cu[aá]nto duran|masterclass|workshop|formaci[oó]n|curso|(?:^|\\s)(?:papada|abdomen|piernas?|brazos?|cuello|celulitis)(?:$|[\\s?.!]))/i.test(text);
+  const praiseOnly = /^(?:[\\s\\p{Extended_Pictographic}\\uFE0F\\u200D]+|(?:bravo|genial|incre[ií]ble|excelente|felicidades|enhorabuena|espectacular|brutal|muy bien|buen trabajo|me encanta|great|amazing|👏|❤️|🔥)[!?.\\s\\p{Extended_Pictographic}\\uFE0F\\u200D]*)$/iu.test(text.trim());
+  const captionContext = context ? "Descripción de la publicación: " + context.slice(0, 1800) : "No se dispone de descripción verificable de esta publicación.";
+  const publicInstruction = praiseOnly
+    ? "Es un aplauso o elogio. Da las gracias de forma breve y natural, sin vender ni ofrecer un DM."
+    : commercialIntent
+      ? "Responde públicamente a la pregunta concreta con naturalidad y brevedad. Si procede, indica que amplías la información por privado; no prometas enviarla si no es posible."
+      : "Responde con criterio al comentario concreto, especialmente si es una crítica: explicación respetuosa y técnica, sin discutir, descalificar ni inventar datos. No ofrezcas un mensaje privado si no lo solicitan.";
+  try {
+    const publicReply = await generateReply({
+      text: "Comentario público recibido: " + text + "\\n" + publicInstruction + "\\nResponde únicamente con el texto público que se publicará. No uses fórmulas genéricas repetidas. No suplantes al doctor. No reveles información de pacientes ni prometas resultados.",
+      audience,
+      channel: "comment",
+      history,
+      context: captionContext,
+    });
+    if (!publicReply || !publicReply.trim()) return false;
+    await replyToComment(commentId, publicReply.trim().slice(0, 900));
+    appendTurn(conversationKey, text, publicReply.trim());
+    console.log(`[comment] Respuesta publica contextual enviada (comment=${commentId}).`);
+    if (commercialIntent && !praiseOnly) {
       try {
+        const privateText = await generateReply({
+          text: "Esta persona solicitó información comercial en un comentario: " + text + ". Responde a su pregunta, explica brevemente la propuesta de valor ORIGEN™, ofrece precio orientativo SOLO cuando la zona y el tarifario estén identificados con certeza, y dirige al WhatsApp de la clínica https://wa.me/34633248646. Si falta contexto, no inventes tratamiento ni precio. No confirmes agenda.",
+          audience,
+          channel: "dm",
+          context: captionContext,
+        });
         await sendPrivateReplyToComment(commentId, privateText);
-        console.log(`[comment] Respuesta publica y privada enviadas (comment=${commentId}).`);
+        console.log(`[comment] Respuesta privada comercial enviada (comment=${commentId}).`);
       } catch (privateErr) {
-        // Never retry the entire public+private pair: doing so duplicates public comments.
         console.error("[comment] Respuesta publica enviada; fallo DM privado:", describeError(privateErr));
       }
-      appendTurn(conversationKey, text, privateText);
-      return true;
-    } catch (err) {
-      console.error("[comment] Fallo al preparar respuesta contextual:", describeError(err));
-      unmarkProcessed(commentId);
-      return false;
     }
+    return true;
+  } catch (err) {
+    console.error("[comment] Fallo al responder comentario:", describeError(err));
+    // Evitar reintentos automáticos que puedan duplicar una respuesta pública.
+    return false;
   }
-  // Cuando Meta no devuelve el caption, no perder una solicitud comercial explícita.
-  // No inventar la zona, el tratamiento ni el precio.
-  if (wantsInfo && !clinicalPost) {
-    try {
-      await replyToComment(commentId, "Gracias por tu consulta. Te enviamos por privado cómo recibir la información del tratamiento.");
-      try {
-        await sendPrivateReplyToComment(commentId,
-          "Gracias por tu interés. Para conocer el tratamiento y su precio orientativo según la zona, nuestro equipo de la clínica puede ayudarte directamente: https://wa.me/34633248646. El presupuesto definitivo depende de valoración médica.");
-        console.log(`[comment] Sin caption: respuesta publica y privada de derivacion enviadas (comment=${commentId}).`);
-      } catch (privateErr) {
-        console.error("[comment] Sin caption: respuesta publica enviada; fallo DM privado:", describeError(privateErr));
-      }
-      return true;
-    } catch (err) {
-      console.error("[comment] Sin caption: fallo respuesta:", describeError(err));
-      return false;
-    }
-  }
-  // Never generate open-ended public comment replies: prevents recursive threads.
-  console.log(`[comment] Sin publicación clínica identificada; respuesta automática omitida: ${commentId}`);
-  return false;
 }
 
 async function handleCommentEvent(value) {
