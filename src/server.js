@@ -400,7 +400,7 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
   }
 
   // Solo solicitudes explícitas: mencionar una zona no equivale a pedir información.
-  const commercialIntent = /(?:\b(?:informaci[oó]n|info|precios?|cu[aá]nto|cuesta|coste|precio|how much|price|details|detalles|presupuesto|cita|valoraci[oó]n|masterclass|workshop|formaci[oó]n)\b|(?:qu[eé]|q)\s+tratamiento|(?:me interesa|quiero saber|quisiera informaci[oó]n|d[oó]nde est[aá]n|d[oó]nde est[aá]is|cu[aá]nto duran|cu[aá]nto dura))/i.test(text);
+  const commercialIntent = /(?:\b(?:informaci[oó]n|info|precios?|cu[aá]nto|cuesta|coste|precio|how much|price|details|detalles|presupuesto|cita|valoraci[oó]n|masterclass|workshop|formaci[oó]n)\b|(?:qu[eé]|q)\s+tratamiento|(?:me interesa|me puedes informar|puedes informarme|podr[ií]as informarme|quisiera saber|quiero saber|quisiera informaci[oó]n|d[oó]nde est[aá]n|d[oó]nde est[aá]is|cu[aá]nto duran|cu[aá]nto dura))/i.test(text);
   const nonCommercialOpinion = /(?:no se ha|no se han|no porque|deporte|cosm[eé]tica|mentira|estafa|enga[nñ]o|no funciona|no sirve|qu[eé] horror|de co[nñ]a)/i.test(text);
   if (!commercialIntent || (nonCommercialOpinion && !/\b(?:precio|informaci[oó]n|cu[aá]nto|tratamiento|presupuesto)\b/i.test(text))) {
     console.log(`[comment] Sin solicitud comercial; no responder: ${commentId}`);
@@ -441,6 +441,24 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
     } catch (err) {
       console.error("[comment] Fallo al preparar respuesta contextual:", describeError(err));
       unmarkProcessed(commentId);
+      return false;
+    }
+  }
+  // Cuando Meta no devuelve el caption, no perder una solicitud comercial explícita.
+  // No inventar la zona, el tratamiento ni el precio.
+  if (wantsInfo && !clinicalPost) {
+    try {
+      await replyToComment(commentId, "Gracias por tu consulta. Te enviamos por privado cómo recibir la información del tratamiento.");
+      try {
+        await sendPrivateReplyToComment(commentId,
+          "Gracias por tu interés. Para conocer el tratamiento y su precio orientativo según la zona, nuestro equipo de la clínica puede ayudarte directamente: https://wa.me/34633248646. El presupuesto definitivo depende de valoración médica.");
+        console.log(`[comment] Sin caption: respuesta publica y privada de derivacion enviadas (comment=${commentId}).`);
+      } catch (privateErr) {
+        console.error("[comment] Sin caption: respuesta publica enviada; fallo DM privado:", describeError(privateErr));
+      }
+      return true;
+    } catch (err) {
+      console.error("[comment] Sin caption: fallo respuesta:", describeError(err));
       return false;
     }
   }
