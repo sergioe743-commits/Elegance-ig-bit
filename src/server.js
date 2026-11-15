@@ -403,8 +403,8 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
   const audience = detectAudience(text);
   const history = getHistory(conversationKey);
   const context = await getCachedMediaCaption(mediaId);
-  const commercialIntent = /(?:informaci[oó]n|\\binfo\\b|precios?|cu[aá]nto|cuesta|coste|how much|price|presupuesto|cita|valoraci[oó]n|me interesa|me puedes informar|puedes informarme|quiero saber|quisiera saber|qu[eé] tratamiento|q tratamiento|d[oó]nde est[aá]n|cu[aá]nto duran|masterclass|workshop|formaci[oó]n|curso|(?:^|\\s)(?:papada|abdomen|piernas?|brazos?|cuello|celulitis)(?:$|[\\s?.!]))/i.test(text);
-  const praiseOnly = /^(?:[\\s\\p{Extended_Pictographic}\\uFE0F\\u200D]+|(?:bravo|genial|incre[ií]ble|excelente|felicidades|enhorabuena|espectacular|brutal|muy bien|buen trabajo|me encanta|great|amazing|👏|❤️|🔥)[!?.\\s\\p{Extended_Pictographic}\\uFE0F\\u200D]*)$/iu.test(text.trim());
+  const commercialIntent = /(?:informaci[oó]n|\binfo\b|precios?|cu[aá]nto|cuesta|coste|how much|price|presupuesto|cita|valoraci[oó]n|me interesa|me puedes informar|puedes informarme|quiero saber|quisiera saber|qu[eé] tratamiento|q tratamiento|d[oó]nde est[aá]n|cu[aá]nto duran|masterclass|workshop|formaci[oó]n|curso|(?:^|\s)(?:papada|abdomen|piernas?|brazos?|cuello|celulitis)(?:$|[\s?.!]))/i.test(text);
+  const praiseOnly = /^(?:[\s\p{Extended_Pictographic}\uFE0F\u200D]+|(?:bravo|genial|incre[ií]ble|excelente|felicidades|enhorabuena|espectacular|brutal|muy bien|buen trabajo|me encanta|great|amazing|👏|❤️|🔥)[!?.\s\p{Extended_Pictographic}\uFE0F\u200D]*)$/iu.test(text.trim());
   const captionContext = context ? "Descripción de la publicación: " + context.slice(0, 1800) : "No se dispone de descripción verificable de esta publicación.";
   const publicInstruction = praiseOnly
     ? "Es un aplauso o elogio. Da las gracias de forma breve y natural, sin vender ni ofrecer un DM."
@@ -413,7 +413,7 @@ async function processComment({ commentId, text, fromId, fromUsername, mediaId }
       : "Responde con criterio al comentario concreto, especialmente si es una crítica: explicación respetuosa y técnica, sin discutir, descalificar ni inventar datos. No ofrezcas un mensaje privado si no lo solicitan.";
   try {
     const publicReply = await generateReply({
-      text: "Comentario público recibido: " + text + "\\n" + publicInstruction + "\\nResponde únicamente con el texto público que se publicará. No uses fórmulas genéricas repetidas. No suplantes al doctor. No reveles información de pacientes ni prometas resultados.",
+      text: "Comentario público recibido: " + text + "\n" + publicInstruction + "\nResponde únicamente con el texto público que se publicará. No uses fórmulas genéricas repetidas. No suplantes al doctor. No reveles información de pacientes ni prometas resultados.",
       audience,
       channel: "comment",
       history,
